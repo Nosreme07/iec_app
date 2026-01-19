@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1093422329001",
+    "project_id": "iec-app-1c3ac",
+    "storage_bucket": "iec-app-1c3ac.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1093422329001:android:6759ff1fe3786ed057cdb8",
+        "android_client_info": {
+          "package_name": "com.example.iec_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB10uV71twyDkRHoGpQXqRSj7LHXHgYEkU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

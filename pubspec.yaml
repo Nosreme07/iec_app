@@ -1,0 +1,32 @@
+name: iec_app
+description: "A new Flutter project."
+publish_to: 'none' 
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Suas dependências
+  firebase_core: ^2.24.2
+  firebase_auth: ^4.16.0
+  cloud_firestore: ^4.14.0
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+# --- AQUI ESTÁ A MUDANÇA ---
+flutter:
+  uses-material-design: true
+
+  # Configuração dos Assets (Arquivos)
+  assets:
+    - assets/json/ARA.json
+    - assets/json/hinos.json
