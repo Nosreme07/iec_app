@@ -19,7 +19,8 @@ dependencies:
   
   # Utilitários
   cupertino_icons: ^1.0.8
-  image_picker: ^1.1.2       # <--- NOVO (Para abrir câmera/galeria)
+  image_picker: ^1.1.2        # <--- NOVO (Para abrir câmera/galeria)
+  intl: ^0.19.0 
 
 dev_dependencies:
   flutter_test:

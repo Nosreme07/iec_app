@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import '../utils/admin_config.dart'; // Importante para verificar se é Admin
+import '../utils/admin_config.dart'; 
 import 'profile_screen.dart';
 import 'bible_screen.dart';
 import 'hymnal_screen.dart';
-import 'members_screen.dart'; // Garante que a tela de membros está importada
+import 'members_screen.dart';
+import 'agenda_screen.dart'; // <--- ESTA ERA A LINHA QUE FALTAVA!
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -111,13 +112,19 @@ class HomeContent extends StatelessWidget {
                 },
               ),
 
-              // 3. AGENDA SEMANAL
+              // 3. AGENDA SEMANAL (CORRIGIDO)
               _buildMenuCard(
                 context,
                 icon: Icons.calendar_view_week,
                 label: "Agenda Semanal",
                 color: Colors.blue,
-                onTap: () {},
+                onTap: () {
+                  // Agora ele sabe quem é AgendaScreen por causa do import lá em cima
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AgendaScreen()),
+                  );
+                },
               ),
 
               // 4. AGENDA ANUAL
@@ -126,7 +133,7 @@ class HomeContent extends StatelessWidget {
                 icon: Icons.calendar_month,
                 label: "Agenda Anual",
                 color: Colors.purple,
-                onTap: () {},
+                onTap: () {}, // Ainda sem tela
               ),
 
               // 5. ESCALA
@@ -135,7 +142,7 @@ class HomeContent extends StatelessWidget {
                 icon: Icons.view_timeline,
                 label: "Escala",
                 color: Colors.teal,
-                onTap: () {},
+                onTap: () {}, // Ainda sem tela
               ),
 
               // 6. TOMBAMENTO
@@ -144,7 +151,7 @@ class HomeContent extends StatelessWidget {
                 icon: Icons.inventory_2,
                 label: "Tombamento",
                 color: Colors.blueGrey,
-                onTap: () {},
+                onTap: () {}, // Ainda sem tela
               ),
 
               // 7. MEMBROS (Rol de Membros)
@@ -154,7 +161,6 @@ class HomeContent extends StatelessWidget {
                 label: "Membros",
                 color: Colors.indigo,
                 onTap: () {
-                  // Navega para a tela de membros que corrigimos
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const MembersScreen()),
@@ -169,7 +175,7 @@ class HomeContent extends StatelessWidget {
                   icon: Icons.attach_money,
                   label: "Finanças",
                   color: Colors.green[700]!,
-                  onTap: () {},
+                  onTap: () {}, // Ainda sem tela
                 ),
             ],
           ),

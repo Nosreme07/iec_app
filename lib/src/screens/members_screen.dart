@@ -30,7 +30,7 @@ class _MembersScreenState extends State<MembersScreen> {
     String get(String key) => (data[key] ?? "").toString();
     String nomeDisplay = get('nome_completo');
     if (nomeDisplay.isEmpty) nomeDisplay = get('nome'); 
-    String? fotoUrl = data['foto_url']; // URL DA FOTO
+    String? fotoUrl = data['foto_url'];
 
     showModalBottomSheet(
       context: context,
@@ -42,7 +42,7 @@ class _MembersScreenState extends State<MembersScreen> {
           decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
           child: Column(
             children: [
-              // FOTO NO DETALHE
+              // FOTO E CABEÇALHO
               CircleAvatar(
                 radius: 50,
                 backgroundColor: Colors.indigo[100],
@@ -61,6 +61,9 @@ class _MembersScreenState extends State<MembersScreen> {
                 child: ListView(
                   children: [
                     _buildSectionTitle("Informações Gerais"),
+                    // --- AQUI ESTÁ A MUDANÇA: SANGUE AGORA É PÚBLICO ---
+                    _buildRow(Icons.bloodtype, "Tipo Sanguíneo", get('grupo_sanguineo')), 
+                    // ---------------------------------------------------
                     _buildRow(Icons.cake, "Nascimento", get('nascimento')),
                     _buildRow(Icons.location_on, "Endereço", "${get('endereco')}, ${get('numero')}"),
                     _buildRow(Icons.map, "Bairro/Comp", "${get('bairro')} - ${get('complemento')}"),
@@ -83,7 +86,7 @@ class _MembersScreenState extends State<MembersScreen> {
                       _buildSectionTitle("Dados Pessoais"),
                       _buildRow(Icons.badge, "CPF", get('cpf')),
                       _buildRow(Icons.face, "Sexo", get('sexo')),
-                      _buildRow(Icons.bloodtype, "Sangue", get('grupo_sanguineo')),
+                      // _buildRow(Icons.bloodtype, "Sangue", get('grupo_sanguineo')), // REMOVIDO DAQUI POIS JÁ ESTÁ LÁ EM CIMA
                       _buildRow(Icons.person_outline, "Pai", get('pai')),
                       _buildRow(Icons.person_outline, "Mãe", get('mae')),
                       _buildRow(Icons.school, "Escolaridade", get('escolaridade')),
@@ -158,7 +161,7 @@ class _MembersScreenState extends State<MembersScreen> {
                     String cargo = data['cargo_atual'] ?? data['role'] ?? "-";
                     String oficial = data['oficial_igreja'] ?? "NENHUM";
                     String subtitulo = cargo;
-                    String? fotoUrl = data['foto_url']; // URL DA FOTO
+                    String? fotoUrl = data['foto_url'];
 
                     if (oficial != "NENHUM" && oficial.isNotEmpty && oficial != "null") subtitulo += " / $oficial";
                     bool isThisUserAdmin = data['role'] == 'admin';
@@ -168,7 +171,6 @@ class _MembersScreenState extends State<MembersScreen> {
                       elevation: 2,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       child: ListTile(
-                        // FOTO NA LISTA
                         leading: CircleAvatar(
                           backgroundColor: isThisUserAdmin ? Colors.orange[100] : Colors.indigo[100],
                           backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
