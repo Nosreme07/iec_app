@@ -1,9 +1,8 @@
 plugins {
     id("com.android.application")
-    id("kotlin-android") // O nome pode variar um pouco
+    id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
-    
-    // ADICIONE ESTA LINHA AQUI:
+    // O Google Services já estava aqui
     id("com.google.gms.google-services")
 }
 
@@ -39,6 +38,14 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    // --- AQUI ESTÁ A CORREÇÃO (ADICIONE ISTO) ---
+    configurations.all {
+        resolutionStrategy {
+            force("androidx.activity:activity:1.9.0")
+        }
+    }
+    // --------------------------------------------
 }
 
 flutter {
