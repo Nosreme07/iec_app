@@ -16,6 +16,10 @@ class _AgendaScreenState extends State<AgendaScreen> {
   DateTime _dataFocada = DateTime.now();
   DateTime _inicioDaSemana = DateTime.now();
 
+  // Controlador para o campo de texto das prioridades
+  final TextEditingController _prioridadesController = TextEditingController();
+  bool _isSavingPrioridades = false;
+
   final List<Map<String, Color>> _eventColors = [
     {'bg': Colors.blue[50]!, 'border': Colors.blue[200]!},
     {'bg': Colors.green[50]!, 'border': Colors.green[200]!},
@@ -29,12 +33,60 @@ class _AgendaScreenState extends State<AgendaScreen> {
     super.initState();
     initializeDateFormatting('pt_BR', null);
     _calcularInicioSemana();
+    // Carrega as prioridades assim que a tela abre
+    _carregarPrioridades();
+  }
+
+  @override
+  void dispose() {
+    _prioridadesController.dispose();
+    super.dispose();
   }
 
   void _calcularInicioSemana() {
     _inicioDaSemana = _dataFocada.subtract(Duration(days: _dataFocada.weekday - 1));
     _inicioDaSemana = DateTime(_inicioDaSemana.year, _inicioDaSemana.month, _inicioDaSemana.day);
-    setState(() {});
+  }
+
+  // Gera um ID único para a semana (Ex: "2025-01-20") para salvar o aviso dessa semana
+  String _getSemanaId() {
+    return DateFormat('yyyy-MM-dd').format(_inicioDaSemana);
+  }
+
+  // Busca o aviso salvo no banco para esta semana
+  Future<void> _carregarPrioridades() async {
+    if (!AdminConfig.isUserAdmin()) return; // Membros usam StreamBuilder, Admin carrega para editar
+
+    String semanaId = _getSemanaId();
+    _prioridadesController.text = ""; // Limpa antes de carregar
+
+    var doc = await FirebaseFirestore.instance.collection('agenda_avisos').doc(semanaId).get();
+    if (doc.exists && mounted) {
+      setState(() {
+        _prioridadesController.text = doc['texto'] ?? "";
+      });
+    }
+  }
+
+  // Salva o texto digitado
+  Future<void> _salvarPrioridades() async {
+    setState(() => _isSavingPrioridades = true);
+    try {
+      String semanaId = _getSemanaId();
+      await FirebaseFirestore.instance.collection('agenda_avisos').doc(semanaId).set({
+        'texto': _prioridadesController.text,
+        'ultima_atualizacao': FieldValue.serverTimestamp(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avisos salvos!"), backgroundColor: Colors.green));
+        // Remove o foco do teclado
+        FocusScope.of(context).unfocus();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro ao salvar."), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isSavingPrioridades = false);
+    }
   }
 
   void _trocarSemana(int semanas) {
@@ -42,6 +94,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
       _dataFocada = _dataFocada.add(Duration(days: 7 * semanas));
       _calcularInicioSemana();
     });
+    // Ao mudar de semana, carrega o aviso da nova semana
+    _carregarPrioridades();
   }
 
   void _addEvent(DateTime dateForThisBox) {
@@ -80,6 +134,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 _dataFocada = DateTime.now();
                 _calcularInicioSemana();
               });
+              _carregarPrioridades();
             }, tooltip: "Semana Atual"),
           IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 18), onPressed: () => _trocarSemana(1), tooltip: "Próxima Semana"),
         ],
@@ -101,7 +156,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
             padding: const EdgeInsets.all(10),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
-              childAspectRatio: 0.55, // Aumentei um pouco a altura para caber tudo
+              childAspectRatio: 0.55, 
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
             ),
@@ -111,7 +166,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 DateTime dayDate = _inicioDaSemana.add(Duration(days: index));
                 return _buildDayCard(dayDate, allDocs, isAdmin);
               } else {
-                return _buildPriorityCard();
+                return _buildPriorityCard(isAdmin);
               }
             },
           );
@@ -161,8 +216,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   itemBuilder: (ctx, i) {
                     final data = dayEvents[i].data() as Map<String, dynamic>;
                     String hora = DateFormat('HH:mm').format((data['data_hora'] as Timestamp).toDate());
-                    // AGORA USAMOS 'TIPO' COMO NOME DO EVENTO
-                    String evento = data['tipo'] ?? (data['titulo'] ?? "Evento"); 
+                    String evento = data['tipo'] ?? (data['titulo'] ?? "Evento");
                     String local = data['local'] ?? "";
                     String dirigente = data['dirigente'] ?? "";
                     String pregador = data['pregador'] ?? "";
@@ -182,37 +236,15 @@ class _AgendaScreenState extends State<AgendaScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // 1. HORA - EVENTO (Negrito)
                             Text(
                               "$hora - ${evento.toUpperCase()}",
                               style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.black87),
                               maxLines: 2, overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 3),
-                            
-                            // 2. LOCAL
-                            if (local.isNotEmpty)
-                              Row(children: [
-                                Icon(Icons.location_on, size: 10, color: Colors.grey[700]),
-                                const SizedBox(width: 2),
-                                Expanded(child: Text(local, style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                              ]),
-
-                            // 3. DIRIGENTE
-                            if (dirigente.isNotEmpty)
-                              Row(children: [
-                                Icon(Icons.person, size: 10, color: Colors.grey[700]),
-                                const SizedBox(width: 2),
-                                Expanded(child: Text("Dir: $dirigente", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                              ]),
-
-                            // 4. PREGADOR
-                            if (pregador.isNotEmpty)
-                              Row(children: [
-                                Icon(Icons.mic, size: 10, color: Colors.grey[700]),
-                                const SizedBox(width: 2),
-                                Expanded(child: Text("Preg: $pregador", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                              ]),
+                            if (local.isNotEmpty) Row(children: [Icon(Icons.location_on, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text(local, style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
+                            if (dirigente.isNotEmpty) Row(children: [Icon(Icons.person, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text("Dir: $dirigente", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
+                            if (pregador.isNotEmpty) Row(children: [Icon(Icons.mic, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text("Preg: $pregador", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
                           ],
                         ),
                       ),
@@ -236,29 +268,72 @@ class _AgendaScreenState extends State<AgendaScreen> {
     );
   }
 
-  Widget _buildPriorityCard() {
+  // --- CARD DE PRIORIDADES / AVISOS ---
+  Widget _buildPriorityCard(bool isAdmin) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.yellow[50], // Fundo amarelinho para destacar
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.shade200, width: 2),
+        border: Border.all(color: Colors.orange.shade300, width: 2),
+        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))],
       ),
       child: Column(
         children: [
+          // Cabeçalho com Botão de Salvar para Admin
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(color: Colors.orange[50], borderRadius: const BorderRadius.vertical(top: Radius.circular(10))),
-            child: const Text("Prioridades", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: Colors.orange[100], borderRadius: const BorderRadius.vertical(top: Radius.circular(10))),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Expanded(
+                  child: Text("Avisos / Prioridades", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown)),
+                ),
+                if (isAdmin)
+                  SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: _isSavingPrioridades 
+                        ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.brown))
+                        : const Icon(Icons.save, size: 18, color: Colors.brown),
+                      onPressed: _salvarPrioridades,
+                      tooltip: "Salvar Aviso",
+                    ),
+                  )
+              ],
+            ),
           ),
-          const Expanded(
+          
+          Expanded(
             child: Padding(
-              padding: EdgeInsets.all(8.0),
-              child: TextField(
-                maxLines: 10,
-                decoration: InputDecoration(hintText: "Anotações...", border: InputBorder.none),
-                style: TextStyle(fontSize: 12),
-              ),
+              padding: const EdgeInsets.all(8.0),
+              child: isAdmin 
+                ? TextField( // Se for Admin, mostra campo editável
+                    controller: _prioridadesController,
+                    maxLines: 20, // Muitas linhas
+                    style: const TextStyle(fontSize: 12, color: Colors.black87),
+                    decoration: const InputDecoration(
+                      hintText: "Escreva os avisos da semana aqui...",
+                      border: InputBorder.none,
+                    ),
+                  )
+                : StreamBuilder<DocumentSnapshot>( // Se for Membro, apenas lê do banco
+                    stream: FirebaseFirestore.instance.collection('agenda_avisos').doc(_getSemanaId()).snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData || !snapshot.data!.exists) {
+                         return const Center(child: Text("Sem avisos.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 12)));
+                      }
+                      String texto = snapshot.data!['texto'] ?? "";
+                      if (texto.isEmpty) return const Center(child: Text("Sem avisos.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 12)));
+                      
+                      return SingleChildScrollView(
+                        child: Text(texto, style: const TextStyle(fontSize: 12, color: Colors.black87)),
+                      );
+                    },
+                  ),
             ),
           ),
         ],
