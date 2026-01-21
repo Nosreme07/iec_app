@@ -33,7 +33,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
     super.initState();
     initializeDateFormatting('pt_BR', null);
     _calcularInicioSemana();
-    // Carrega as prioridades assim que a tela abre
     _carregarPrioridades();
   }
 
@@ -48,17 +47,15 @@ class _AgendaScreenState extends State<AgendaScreen> {
     _inicioDaSemana = DateTime(_inicioDaSemana.year, _inicioDaSemana.month, _inicioDaSemana.day);
   }
 
-  // Gera um ID único para a semana (Ex: "2025-01-20") para salvar o aviso dessa semana
   String _getSemanaId() {
     return DateFormat('yyyy-MM-dd').format(_inicioDaSemana);
   }
 
-  // Busca o aviso salvo no banco para esta semana
   Future<void> _carregarPrioridades() async {
-    if (!AdminConfig.isUserAdmin()) return; // Membros usam StreamBuilder, Admin carrega para editar
+    if (!AdminConfig.isUserAdmin()) return;
 
     String semanaId = _getSemanaId();
-    _prioridadesController.text = ""; // Limpa antes de carregar
+    _prioridadesController.text = "";
 
     var doc = await FirebaseFirestore.instance.collection('agenda_avisos').doc(semanaId).get();
     if (doc.exists && mounted) {
@@ -68,7 +65,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
     }
   }
 
-  // Salva o texto digitado
   Future<void> _salvarPrioridades() async {
     setState(() => _isSavingPrioridades = true);
     try {
@@ -79,7 +75,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avisos salvos!"), backgroundColor: Colors.green));
-        // Remove o foco do teclado
         FocusScope.of(context).unfocus();
       }
     } catch (e) {
@@ -94,7 +89,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
       _dataFocada = _dataFocada.add(Duration(days: 7 * semanas));
       _calcularInicioSemana();
     });
-    // Ao mudar de semana, carrega o aviso da nova semana
     _carregarPrioridades();
   }
 
@@ -107,8 +101,61 @@ class _AgendaScreenState extends State<AgendaScreen> {
   }
 
   Future<void> _deleteEvent(String id) async {
-    bool confirm = await showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text("Excluir"), content: const Text("Apagar este evento?"), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")), TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("EXCLUIR", style: TextStyle(color: Colors.red)))])) ?? false;
+    bool confirm = await showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text("Excluir"), 
+      content: const Text("Apagar este evento permanentemente?"), 
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")), 
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("EXCLUIR", style: TextStyle(color: Colors.red)))
+      ]
+    )) ?? false;
+    
     if (confirm) await FirebaseFirestore.instance.collection('agenda').doc(id).delete();
+  }
+
+  // --- NOVA FUNÇÃO: MOSTRAR OPÇÕES AO CLICAR ---
+  void _showEventOptions(String id, Map<String, dynamic> data) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Center(
+                  child: Container(
+                    width: 40, 
+                    height: 4, 
+                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit, color: Colors.blue),
+                title: const Text('Editar Evento'),
+                onTap: () {
+                  Navigator.pop(context); // Fecha o menu
+                  _editEvent(id, data);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Excluir Evento'),
+                onTap: () {
+                  Navigator.pop(context); // Fecha o menu
+                  _deleteEvent(id);
+                },
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -223,8 +270,9 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     final colors = _eventColors[i % _eventColors.length];
 
                     return InkWell(
-                      onTap: isAdmin ? () => _editEvent(dayEvents[i].id, data) : null,
-                      onLongPress: isAdmin ? () => _deleteEvent(dayEvents[i].id) : null,
+                      // --- ALTERAÇÃO AQUI: Chama o menu de opções ---
+                      onTap: isAdmin ? () => _showEventOptions(dayEvents[i].id, data) : null,
+                      borderRadius: BorderRadius.circular(8),
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 6),
                         padding: const EdgeInsets.all(6),
@@ -268,18 +316,16 @@ class _AgendaScreenState extends State<AgendaScreen> {
     );
   }
 
-  // --- CARD DE PRIORIDADES / AVISOS ---
   Widget _buildPriorityCard(bool isAdmin) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.yellow[50], // Fundo amarelinho para destacar
+        color: Colors.yellow[50], 
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.orange.shade300, width: 2),
         boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))],
       ),
       child: Column(
         children: [
-          // Cabeçalho com Botão de Salvar para Admin
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -311,20 +357,20 @@ class _AgendaScreenState extends State<AgendaScreen> {
             child: Padding(
               padding: const EdgeInsets.all(8.0),
               child: isAdmin 
-                ? TextField( // Se for Admin, mostra campo editável
+                ? TextField( 
                     controller: _prioridadesController,
-                    maxLines: 20, // Muitas linhas
+                    maxLines: 20, 
                     style: const TextStyle(fontSize: 12, color: Colors.black87),
                     decoration: const InputDecoration(
                       hintText: "Escreva os avisos da semana aqui...",
                       border: InputBorder.none,
                     ),
                   )
-                : StreamBuilder<DocumentSnapshot>( // Se for Membro, apenas lê do banco
+                : StreamBuilder<DocumentSnapshot>( 
                     stream: FirebaseFirestore.instance.collection('agenda_avisos').doc(_getSemanaId()).snapshots(),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData || !snapshot.data!.exists) {
-                         return const Center(child: Text("Sem avisos.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 12)));
+                          return const Center(child: Text("Sem avisos.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 12)));
                       }
                       String texto = snapshot.data!['texto'] ?? "";
                       if (texto.isEmpty) return const Center(child: Text("Sem avisos.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 12)));

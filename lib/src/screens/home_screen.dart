@@ -6,6 +6,7 @@ import 'hymnal_screen.dart';
 import 'members_screen.dart';
 import 'agenda_screen.dart'; 
 import 'annual_agenda_screen.dart';
+import 'scale_screen.dart';
 
 // --- IMPORTS DOS NOVOS WIDGETS ---
 import '../widgets/home_notices_widget.dart'; 
@@ -151,7 +152,12 @@ class HomeContent extends StatelessWidget {
                 icon: Icons.view_timeline,
                 label: "Escala",
                 color: Colors.teal,
-                onTap: () {}, // Ainda sem tela
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ScaleScreen()),
+                  );  
+                }, // Ainda sem tela
               ),
 
               // 6. TOMBAMENTO
