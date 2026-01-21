@@ -41,5 +41,4 @@ flutter:
   assets:
     - assets/json/ARA.json
     - assets/json/hinos.json
-    # Se você for adicionar imagens depois, adicione a linha abaixo:
-    # - assets/
+    - assets/  # <--- ADICIONEI ESTA LINHA (Libera a pasta para ler o logo.png)

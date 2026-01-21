@@ -7,6 +7,10 @@ import 'members_screen.dart';
 import 'agenda_screen.dart'; 
 import 'annual_agenda_screen.dart';
 
+// --- IMPORTS DOS NOVOS WIDGETS ---
+import '../widgets/home_notices_widget.dart'; 
+import '../widgets/monthly_birthdays_widget.dart'; 
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -19,7 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Lista das telas principais (Bottom Navigation)
   final List<Widget> _screens = [
-    const HomeContent(),   // Índice 0: Grade de ícones
+    const HomeContent(),   // Índice 0: Grade de ícones + Avisos + Aniversariantes
     const ProfileScreen(), // Índice 1: Perfil
   ];
 
@@ -113,14 +117,13 @@ class HomeContent extends StatelessWidget {
                 },
               ),
 
-              // 3. AGENDA SEMANAL (CORRIGIDO)
+              // 3. AGENDA SEMANAL
               _buildMenuCard(
                 context,
                 icon: Icons.calendar_view_week,
                 label: "Agenda Semanal",
                 color: Colors.blue,
                 onTap: () {
-                  // Agora ele sabe quem é AgendaScreen por causa do import lá em cima
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const AgendaScreen()),
@@ -160,7 +163,7 @@ class HomeContent extends StatelessWidget {
                 onTap: () {}, // Ainda sem tela
               ),
 
-              // 7. MEMBROS (Rol de Membros)
+              // 7. MEMBROS
               _buildMenuCard(
                 context,
                 icon: Icons.groups,
@@ -188,10 +191,30 @@ class HomeContent extends StatelessWidget {
 
           const SizedBox(height: 30),
 
-          // --- SEÇÃO DE ANIVERSARIANTES ---
-          _buildBirthdayCard(),
+          // --- 1. AVISOS DA SEMANA (LETREIRO) ---
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4.0),
+            child: Text(
+              "Avisos da Semana",
+              style: TextStyle(
+                fontSize: 18, 
+                fontWeight: FontWeight.bold, 
+                color: Colors.black87
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          
+          // Carrossel dinâmico
+          const WeeklyNoticesWidget(),
 
           const SizedBox(height: 20),
+
+          // --- 2. ANIVERSARIANTES DO MÊS ---
+          // Este widget já tem seu próprio título interno ("Aniversariantes de Janeiro")
+          const MonthlyBirthdaysWidget(),
+
+          const SizedBox(height: 30), // Espaço final
         ],
       ),
     );
@@ -239,76 +262,6 @@ class HomeContent extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // --- WIDGET DO CARD DE ANIVERSARIANTES ---
-  Widget _buildBirthdayCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.blue[100]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.cake, color: Colors.pink[400], size: 28),
-              const SizedBox(width: 10),
-              const Text(
-                "Aniversariantes",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 20, thickness: 1),
-          _buildBirthdayItem("15/01", "Maria Silva"),
-          _buildBirthdayItem("22/01", "Lucas Pereira"),
-          const SizedBox(height: 10),
-          Center(
-            child: TextButton(onPressed: () {}, child: const Text("Ver todos")),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBirthdayItem(String date, String name) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: Text(
-              date,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.blue[800],
-                fontSize: 12,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            name,
-            style: const TextStyle(fontSize: 14, color: Colors.black87),
-          ),
-        ],
       ),
     );
   }
