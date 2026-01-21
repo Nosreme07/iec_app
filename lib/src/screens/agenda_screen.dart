@@ -288,7 +288,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Expanded(
-                  child: Text("Avisos / Prioridades", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown)),
+                  child: Text("Avisos", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown)),
                 ),
                 if (isAdmin)
                   SizedBox(

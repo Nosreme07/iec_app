@@ -4,7 +4,8 @@ import 'profile_screen.dart';
 import 'bible_screen.dart';
 import 'hymnal_screen.dart';
 import 'members_screen.dart';
-import 'agenda_screen.dart'; // <--- ESTA ERA A LINHA QUE FALTAVA!
+import 'agenda_screen.dart'; 
+import 'annual_agenda_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -133,7 +134,12 @@ class HomeContent extends StatelessWidget {
                 icon: Icons.calendar_month,
                 label: "Agenda Anual",
                 color: Colors.purple,
-                onTap: () {}, // Ainda sem tela
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AnnualAgendaScreen()),
+                  );
+                },
               ),
 
               // 5. ESCALA

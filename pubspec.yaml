@@ -11,16 +11,23 @@ dependencies:
   flutter:
     sdk: flutter
   
+  # --- Internacionalização (Para deixar datas em PT-BR) ---
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2 
+  # -------------------------------------------------------
+
   # Dependências do Firebase
   firebase_core: ^2.32.0
   firebase_auth: ^4.20.0
   cloud_firestore: ^4.17.5
-  firebase_storage: ^11.7.7  # <--- NOVO (Para salvar fotos)
-  
+  firebase_storage: ^11.7.7 
+  pdf: ^3.10.4
+  printing: ^5.11.0
+
   # Utilitários
   cupertino_icons: ^1.0.8
-  image_picker: ^1.1.2        # <--- NOVO (Para abrir câmera/galeria)
-  intl: ^0.19.0 
+  image_picker: ^1.1.2 
 
 dev_dependencies:
   flutter_test:
@@ -34,3 +41,5 @@ flutter:
   assets:
     - assets/json/ARA.json
     - assets/json/hinos.json
+    # Se você for adicionar imagens depois, adicione a linha abaixo:
+    # - assets/
