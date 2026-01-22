@@ -7,8 +7,9 @@ import 'members_screen.dart';
 import 'agenda_screen.dart'; 
 import 'annual_agenda_screen.dart';
 import 'scale_screen.dart';
+import 'patrimonio_screen.dart'; 
+import 'finance_screen.dart'; // Import da tela de finanças
 
-// --- IMPORTS DOS NOVOS WIDGETS ---
 import '../widgets/home_notices_widget.dart'; 
 import '../widgets/monthly_birthdays_widget.dart'; 
 
@@ -157,16 +158,21 @@ class HomeContent extends StatelessWidget {
                     context,
                     MaterialPageRoute(builder: (context) => const ScaleScreen()),
                   );  
-                }, // Ainda sem tela
+                },
               ),
 
-              // 6. TOMBAMENTO
+              // 6. PATRIMÔNIO
               _buildMenuCard(
                 context,
                 icon: Icons.inventory_2,
-                label: "Tombamento",
+                label: "Patrimônio",
                 color: Colors.blueGrey,
-                onTap: () {}, // Ainda sem tela
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const PatrimonioScreen()),
+                  );  
+                },
               ),
 
               // 7. MEMBROS
@@ -190,7 +196,12 @@ class HomeContent extends StatelessWidget {
                   icon: Icons.attach_money,
                   label: "Finanças",
                   color: Colors.green[700]!,
-                  onTap: () {}, // Ainda sem tela
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const FinanceScreen()),
+                    );
+                  },
                 ),
             ],
           ),
@@ -217,7 +228,6 @@ class HomeContent extends StatelessWidget {
           const SizedBox(height: 20),
 
           // --- 2. ANIVERSARIANTES DO MÊS ---
-          // Este widget já tem seu próprio título interno ("Aniversariantes de Janeiro")
           const MonthlyBirthdaysWidget(),
 
           const SizedBox(height: 30), // Espaço final
@@ -247,7 +257,7 @@ class HomeContent extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1), // Atualizado para withValues se seu Flutter for muito novo, senão use withOpacity
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, size: 30, color: color),

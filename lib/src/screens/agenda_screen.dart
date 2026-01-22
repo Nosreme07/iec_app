@@ -16,7 +16,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
   DateTime _dataFocada = DateTime.now();
   DateTime _inicioDaSemana = DateTime.now();
 
-  // Controlador para o campo de texto das prioridades
   final TextEditingController _prioridadesController = TextEditingController();
   bool _isSavingPrioridades = false;
 
@@ -113,48 +112,98 @@ class _AgendaScreenState extends State<AgendaScreen> {
     if (confirm) await FirebaseFirestore.instance.collection('agenda').doc(id).delete();
   }
 
-  // --- NOVA FUNÇÃO: MOSTRAR OPÇÕES AO CLICAR ---
-  void _showEventOptions(String id, Map<String, dynamic> data) {
-    showModalBottomSheet(
+  // --- NOVA FUNÇÃO: POPUP COM DETALHES ---
+  void _showEventDetails(String id, Map<String, dynamic> data) {
+    bool isAdmin = AdminConfig.isUserAdmin();
+    
+    String hora = DateFormat('HH:mm').format((data['data_hora'] as Timestamp).toDate());
+    String titulo = data['titulo'] ?? data['tipo'] ?? "Evento";
+    String local = data['local'] ?? "Igreja";
+    String dirigente = data['dirigente'] ?? "Não informado";
+    String pregador = data['pregador'] ?? "Não informado";
+    String descricao = data['descricao'] ?? "";
+
+    showDialog(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Wrap(
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Center(
-                  child: Container(
-                    width: 40, 
-                    height: 4, 
-                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
-                  ),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.edit, color: Colors.blue),
-                title: const Text('Editar Evento'),
-                onTap: () {
-                  Navigator.pop(context); // Fecha o menu
-                  _editEvent(id, data);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Excluir Evento'),
-                onTap: () {
-                  Navigator.pop(context); // Fecha o menu
-                  _deleteEvent(id);
-                },
-              ),
-              const SizedBox(height: 20),
+              Text(titulo.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 5),
+              Text("Horário: $hora", style: TextStyle(fontSize: 14, color: Colors.grey[600])),
             ],
           ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Divider(),
+                _buildDetailRow(Icons.location_on, "Local:", local),
+                const SizedBox(height: 8),
+                _buildDetailRow(Icons.person, "Dirigente:", dirigente),
+                const SizedBox(height: 8),
+                _buildDetailRow(Icons.mic, "Pregador:", pregador),
+                
+                if (descricao.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text("Observações:", style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(descricao, style: TextStyle(color: Colors.grey[800])),
+                ]
+              ],
+            ),
+          ),
+          actions: [
+            // BOTÕES DE AÇÃO (SÓ PARA ADMIN)
+            if (isAdmin) ...[
+              TextButton.icon(
+                icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                label: const Text("Excluir", style: TextStyle(color: Colors.red)),
+                onPressed: () {
+                  Navigator.pop(ctx); // Fecha o popup de detalhes
+                  _deleteEvent(id);   // Abre a confirmação de exclusão
+                },
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
+                label: const Text("Editar", style: TextStyle(color: Colors.blue)),
+                onPressed: () {
+                  Navigator.pop(ctx); // Fecha o popup
+                  _editEvent(id, data); // Vai para tela de edição
+                },
+              ),
+            ],
+            // BOTÃO FECHAR (PARA TODOS)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Fechar"),
+            ),
+          ],
         );
       },
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: Colors.indigo),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: const TextStyle(color: Colors.black87, fontSize: 14),
+              children: [
+                TextSpan(text: "$label ", style: const TextStyle(fontWeight: FontWeight.bold)),
+                TextSpan(text: value),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -270,8 +319,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     final colors = _eventColors[i % _eventColors.length];
 
                     return InkWell(
-                      // --- ALTERAÇÃO AQUI: Chama o menu de opções ---
-                      onTap: isAdmin ? () => _showEventOptions(dayEvents[i].id, data) : null,
+                      // --- ALTERAÇÃO AQUI: Abre o popup para TODOS ---
+                      onTap: () => _showEventDetails(dayEvents[i].id, data),
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 6),

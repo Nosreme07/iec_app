@@ -1,44 +1,56 @@
 name: iec_app
 description: "A new Flutter project."
-publish_to: 'none' 
+publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.10.7
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
   
-  # --- Internacionalização (Para deixar datas em PT-BR) ---
   flutter_localizations:
     sdk: flutter
-  intl: ^0.20.2 
-  # -------------------------------------------------------
+  
+  intl: ^0.20.2
 
-  # Dependências do Firebase
-  firebase_core: ^2.32.0
-  firebase_auth: ^4.20.0
-  cloud_firestore: ^4.17.5
-  firebase_storage: ^11.7.7 
+  # Firebase (Deixe o Flutter gerenciar as versões compatíveis)
+  firebase_core: ^2.24.0
+  firebase_auth: ^4.15.0
+  cloud_firestore: ^4.13.0
+  firebase_storage: ^11.5.0
+  
+  # PDF e Impressão
+  # Versões atualizadas para evitar conflitos de Kotlin
   pdf: ^3.10.4
-  printing: ^5.11.0
+  printing: ^5.12.0
 
   # Utilitários
-  cupertino_icons: ^1.0.8
-  image_picker: ^1.1.2 
+  cupertino_icons: ^1.0.2
+  image_picker: ^1.0.7
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0 
+  flutter_lints: ^2.0.0
+
+# --- A VACINA PARA O ERRO SDK 36 ---
+# Isso força o Flutter a usar versões específicas desses pacotes internos
+# que são compatíveis com o Android 34 (seu celular e configuração atual).
+dependency_overrides:
+  # O culpado principal: força uma versão que não exige SDK 36
+  flutter_plugin_android_lifecycle: 2.0.23
+  # O plugin de imagem que também estava puxando o SDK 36
+  image_picker_android: 0.8.12+13
 
 flutter:
   uses-material-design: true
-
-  # Configuração dos Assets (Arquivos)
+  
+  # Seus arquivos de configuração e imagens
   assets:
     - assets/json/ARA.json
     - assets/json/hinos.json
-    - assets/  # <--- ADICIONEI ESTA LINHA (Libera a pasta para ler o logo.png)
+    - assets/

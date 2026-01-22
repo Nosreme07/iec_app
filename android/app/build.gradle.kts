@@ -2,13 +2,12 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
-    // O Google Services já estava aqui
     id("com.google.gms.google-services")
 }
 
 android {
     namespace = "com.example.iec_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 34 // Mantemos 34 (Android 14)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -21,33 +20,43 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.iec_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 34
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // Desativa a minificação para evitar erros de recursos sumindo
+            isMinifyEnabled = false 
+            isShrinkResources = false
         }
     }
-
-    // --- AQUI ESTÁ A CORREÇÃO (ADICIONE ISTO) ---
-    configurations.all {
-        resolutionStrategy {
-            force("androidx.activity:activity:1.9.0")
-        }
-    }
-    // --------------------------------------------
 }
 
 flutter {
     source = "../.."
+}
+
+// --- SOLUÇÃO DEFINITIVA (VACINA DE VERSÕES) ---
+configurations.all {
+    resolutionStrategy {
+        eachDependency {
+            // 1. Corrige o erro "requires Android SDK 36"
+            if (requested.group == "androidx.activity") {
+                useVersion("1.9.3") // Versão estável
+            }
+            // 2. Corrige o erro "lStar not found"
+            if (requested.group == "androidx.core") {
+                useVersion("1.13.1") // Versão que tem o lStar corrigido
+            }
+            // 3. Garante compatibilidade do Lifecycle
+            if (requested.group == "androidx.lifecycle") {
+                useVersion("2.8.6")
+            }
+        }
+    }
 }
