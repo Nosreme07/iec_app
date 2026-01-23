@@ -14,18 +14,16 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   
-  # Internacionalização (Versão compatível com Flutter atual)
+  # Internacionalização
   intl: ^0.20.2
 
-  # --- FIREBASE (VERSÕES ESTÁVEIS/BLINDADAS) ---
-  # Essas versões evitam o erro "PigeonUserDetails" e tela vermelha
-  firebase_core: ^2.27.0
-  firebase_auth: ^4.17.8
-  cloud_firestore: ^4.15.8
-  firebase_storage: ^11.6.9
+  # --- FIREBASE (VERSÕES ATUALIZADAS) ---
+  firebase_core: ^3.8.1
+  firebase_auth: ^5.3.4
+  cloud_firestore: ^5.5.2
+  firebase_storage: ^12.3.8
   
   # --- PDF e IMPRESSÃO ---
-  # Versões equilibradas para não brigar com o Firebase antigo
   pdf: ^3.10.4
   printing: ^5.12.0
 
@@ -45,15 +43,8 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^2.0.0
 
-# --- VACINAS DE DEPENDÊNCIA ---
-dependency_overrides:
-  # Mantemos apenas estas que são críticas para estabilidade do ciclo de vida
-  flutter_plugin_android_lifecycle: 2.0.23
-  image_picker_android: 0.8.12+13
-  
-  # NOTA: Removemos path_provider e url_launcher daqui.
-  # Eles vão atualizar sozinhos agora e funcionarão graças 
-  # ao conserto que fizemos no build.gradle.kts.
+# REMOVIDO: dependency_overrides
+# Deixe o Flutter gerenciar as versões automaticamente
 
 flutter:
   uses-material-design: true
@@ -61,4 +52,3 @@ flutter:
   assets:
     - assets/json/ARA.json
     - assets/json/hinos.json
-    # - assets/images/logo.png

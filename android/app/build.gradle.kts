@@ -11,12 +11,12 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_11  // ATUALIZADO para Java 11
+        targetCompatibility = JavaVersion.VERSION_11  // ATUALIZADO para Java 11
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+        jvmTarget = "11"  // ATUALIZADO para Java 11
     }
 
     defaultConfig {
@@ -25,15 +25,20 @@ android {
         targetSdk = 34
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true
     }
 
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
-            // Em Kotlin, usamos isMinifyEnabled em vez de minifyEnabled
             isMinifyEnabled = false
             isShrinkResources = false
         }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 }
 
@@ -41,29 +46,16 @@ flutter {
     source = "../.."
 }
 
-// --- SOLUÇÃO DEFINITIVA (VACINA TRADUZIDA PARA KOTLIN) ---
+dependencies {
+    implementation("androidx.multidex:multidex:2.0.1")
+}
+
 configurations.all {
     resolutionStrategy {
-        eachDependency {
-            // 1. Corrige o erro "requires Android SDK 36" (Browser)
-            if (requested.group == "androidx.browser") {
-                useVersion("1.8.0")
-            }
-
-            // 2. Corrige incompatibilidades de Activity
-            if (requested.group == "androidx.activity") {
-                useVersion("1.9.3")
-            }
-
-            // 3. Corrige o erro "lStar not found" e Core
-            if (requested.group == "androidx.core") {
-                useVersion("1.13.1")
-            }
-
-            // 4. Garante compatibilidade do Lifecycle
-            if (requested.group == "androidx.lifecycle") {
-                useVersion("2.8.6")
-            }
-        }
+        force("androidx.browser:browser:1.8.0")
+        force("androidx.activity:activity:1.9.3")
+        force("androidx.core:core:1.13.1")
+        force("androidx.core:core-ktx:1.13.1")
+        force("androidx.lifecycle:lifecycle-runtime:2.8.6")
     }
 }

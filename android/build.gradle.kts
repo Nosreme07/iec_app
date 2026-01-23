@@ -1,3 +1,5 @@
+// android/build.gradle.kts
+
 allprojects {
     repositories {
         google()
@@ -5,12 +7,11 @@ allprojects {
     }
 }
 
-// Configuração correta para o novo Gradle
+// Configuração dos diretórios de build
 val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
 rootProject.layout.buildDirectory.value(newBuildDir)
 
 subprojects {
-    // CORREÇÃO AQUI: Usamos a nova API 'layout.buildDirectory' para evitar o erro de Tipo
     val subprojectBuildDir = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(subprojectBuildDir)
 }
@@ -18,6 +19,9 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 }
+
+// REMOVIDO: O force para androidx.core 1.6.0 que estava causando conflito
+// Agora vamos deixar as versões serem gerenciadas normalmente
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
