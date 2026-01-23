@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-// Certifique-se de ter importado seu gerador de PDF
+// Certifique-se de que este arquivo existe e tem a classe PdfGenerator
 import '../services/pdf_generator.dart'; 
 
 class FinanceScreen extends StatefulWidget {
@@ -83,7 +83,12 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
   // --- 1. FUNÇÃO DE EXPORTAR PDF (APENAS FINANCEIRO) ---
   Future<void> _gerarPdfMensal() async {
-    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
+    // Mostra indicador de carregamento
+    showDialog(
+      context: context, 
+      barrierDismissible: false, 
+      builder: (c) => const Center(child: CircularProgressIndicator())
+    );
 
     try {
       // Busca os dados do mês atual para o PDF
@@ -94,27 +99,22 @@ class _FinanceScreenState extends State<FinanceScreen> {
           .orderBy('data', descending: false) // Ordem cronológica para o relatório
           .get();
 
-      if (mounted) Navigator.pop(context); // Fecha loading
+      // Fecha o loading
+      if (mounted) Navigator.pop(context); 
 
       if (snapshot.docs.isEmpty) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sem dados neste mês para gerar PDF.")));
         return;
       }
 
-      // CHAMA SEU GERADOR DE PDF (Você precisará adaptar o PdfGenerator para aceitar dados financeiros)
-      // Exemplo: await PdfGenerator.generateFinanceReport(_mesAtual, snapshot.docs);
-      // Como não tenho seu arquivo pdf_generator.dart atualizado para finanças, vou colocar um aviso:
-      
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("PDF enviado para impressão! (Implementar lógica no PdfGenerator)"),
-        backgroundColor: Colors.blue,
-      ));
-      
-      // DICA: No seu arquivo services/pdf_generator.dart, crie um método:
-      // static Future<void> generateFinanceReport(DateTime data, List<DocumentSnapshot> docs) async { ... }
+      // --- CHAMADA REAL AO GERADOR DE PDF ---
+      await PdfGenerator.generateFinanceReport(_mesAtual, snapshot.docs);
 
     } catch (e) {
-      if (mounted) Navigator.pop(context);
+      // Garante que o loading feche em caso de erro
+      if (mounted && Navigator.canPop(context)) {
+         Navigator.pop(context);
+      }
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao gerar PDF: $e")));
     }
   }
@@ -339,13 +339,20 @@ class _FinanceScreenState extends State<FinanceScreen> {
                     TextField(
                       controller: _valorController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: "Valor (R\$)", hintText: "0,00", border: OutlineInputBorder(), prefixIcon: Icon(Icons.attach_money)),
+                      // AQUI FOI REMOVIDO O 'const' QUE CAUSAVA O ERRO
+                      decoration: const InputDecoration(
+                        labelText: "Valor (R\$)", 
+                        hintText: "0,00", 
+                        border: OutlineInputBorder(), 
+                        prefixIcon: Icon(Icons.attach_money)
+                      ),
                     ),
                     const SizedBox(height: 12),
 
                     // CATEGORIA
                     DropdownButtonFormField<String>(
                       value: _categoriaSelecionada,
+                      // AQUI TAMBÉM REMOVIDO O 'const'
                       decoration: const InputDecoration(labelText: "Categoria", border: OutlineInputBorder()),
                       items: categoriasAtuais.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                       onChanged: (val) => setStateDialog(() => _categoriaSelecionada = val!),
@@ -355,6 +362,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                     // DESCRIÇÃO
                     TextField(
                       controller: _descricaoController,
+                      // AQUI TAMBÉM REMOVIDO O 'const'
                       decoration: const InputDecoration(labelText: "Observação / Detalhes", border: OutlineInputBorder()),
                     ),
                   ],
