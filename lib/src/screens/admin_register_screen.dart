@@ -37,7 +37,9 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
   final List<String> _departamentoOptions = ['Nenhum', 'Dep. Infantil', 'UMEC', 'UAF', 'UHCM', 'Min. de Louvor'];
   final List<String> _cargoOptions = ['Membro', 'Presidente', 'Vice-Presidente', 'Dir. Patrimônio', 'Secretária', '1º Tesoureiro', '2º Tesoureiro', 'Zelador(a)', 'Conselho Fiscal'];
   final List<String> _oficialOptions = ['Nenhum', 'Pastor', 'Presbítero', 'Diácono(a)'];
-  final List<String> _acessoOptions = ['Membro Comum', 'Administrador'];
+  
+  // --- LISTA DE ACESSO (Permite criar usuários Financeiros) ---
+  final List<String> _acessoOptions = ['Membro', 'Visitante', 'Administrador', 'Financeiro'];
 
   final List<String> _fields = [
     'nome_completo', 'pai', 'mae', 'nascimento', 'profissao', 'habilitacao', 
@@ -73,7 +75,8 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
       _selectedCargo = "Membro";
       _selectedOficial = "Nenhum";
       _selectedDepartamento = "Nenhum";
-      _selectedAcesso = "Membro Comum";
+      // Valor padrão ao criar novo
+      _selectedAcesso = "Membro";
     }
   }
 
@@ -102,7 +105,18 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
       _selectedDepartamento = loadDrop('departamento', _departamentoOptions);
       _selectedCargo = loadDrop('cargo_atual', _cargoOptions);
       _selectedOficial = loadDrop('oficial_igreja', _oficialOptions);
-      _selectedAcesso = (data['role'] == 'admin') ? 'Administrador' : 'Membro Comum';
+      
+      // --- LÓGICA DE CARREGAMENTO DO ACESSO (Mapeamento Banco -> Tela) ---
+      String roleDb = data['role'] ?? 'membro';
+      if (roleDb == 'admin') {
+        _selectedAcesso = 'Administrador';
+      } else if (roleDb == 'financeiro') {
+        _selectedAcesso = 'Financeiro';
+      } else if (roleDb == 'visitante') {
+        _selectedAcesso = 'Visitante';
+      } else {
+        _selectedAcesso = 'Membro';
+      }
     });
   }
 
@@ -142,7 +156,11 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final String systemRole = (_selectedAcesso == 'Administrador') ? 'admin' : 'membro';
+      // --- LÓGICA DE SALVAMENTO DO ACESSO (Mapeamento Tela -> Banco) ---
+      String systemRole = 'membro'; // Padrão
+      if (_selectedAcesso == 'Administrador') systemRole = 'admin';
+      if (_selectedAcesso == 'Financeiro') systemRole = 'financeiro';
+      if (_selectedAcesso == 'Visitante') systemRole = 'visitante';
       
       Map<String, dynamic> dadosParaSalvar = {
         'role': systemRole,

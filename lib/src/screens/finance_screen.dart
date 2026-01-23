@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import '../utils/admin_config.dart';
+// Certifique-se de ter importado seu gerador de PDF
+import '../services/pdf_generator.dart'; 
 
 class FinanceScreen extends StatefulWidget {
   const FinanceScreen({super.key});
@@ -14,19 +16,24 @@ class FinanceScreen extends StatefulWidget {
 class _FinanceScreenState extends State<FinanceScreen> {
   DateTime _mesAtual = DateTime.now();
   
+  // Variáveis para controle de acesso
+  String _userRole = ''; 
+  bool _isLoadingRole = true;
+
   // Controladores do Formulário
-  final TextEditingController _nomeController = TextEditingController(); // NOVO
+  final TextEditingController _nomeController = TextEditingController();
   final TextEditingController _descricaoController = TextEditingController();
   final TextEditingController _valorController = TextEditingController();
   
   String _tipoSelecionado = 'entrada';
   String _categoriaSelecionada = 'Dízimo';
   
-  final List<String> _categoriasEntrada = ['Dízimo', 'Oferta', 'Outros'];
+  final List<String> _categoriasEntrada = ['Dízimo', 'Oferta', 'EBD', 'Outros'];
+  
   final List<String> _categoriasSaida = ['Prebenda Pastoral','INSS Pastor', 'FGTM', 'Ajuda de Custo Zeladoria',
   'INSS Zeladoria', 'FGTS Zeladoria', 'Neoenergia (igreja)', 'Neoenergia (comunidade)', 'Compesa', 
   'Internet', 'GFIP', 'Material de Limpeza', 'Descartáveis', 'Ítens da Sta Ceia', 'Ofertas Missionárias','Assistência Social',
-  'Papelaria', 'Man. do Templo', 'Man. do Som', 'Outros'];
+  'Papelaria', 'Man. do Templo', 'Man. do Som','UIECB','KOINONIA', 'Outros'];
 
   bool _isSaving = false;
 
@@ -34,6 +41,26 @@ class _FinanceScreenState extends State<FinanceScreen> {
   void initState() {
     super.initState();
     initializeDateFormatting('pt_BR', null);
+    _checkUserRole();
+  }
+
+  // --- BUSCA A FUNÇÃO DO USUÁRIO NO BANCO ---
+  Future<void> _checkUserRole() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        DocumentSnapshot doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (doc.exists) {
+          setState(() {
+            _userRole = doc.get('role') ?? 'membro';
+            _isLoadingRole = false;
+          });
+        }
+      } catch (e) {
+        print("Erro ao verificar permissão: $e");
+        setState(() => _isLoadingRole = false);
+      }
+    }
   }
 
   @override
@@ -54,9 +81,114 @@ class _FinanceScreenState extends State<FinanceScreen> {
   DateTime _getInicioMes() => DateTime(_mesAtual.year, _mesAtual.month, 1);
   DateTime _getFimMes() => DateTime(_mesAtual.year, _mesAtual.month + 1, 0, 23, 59, 59);
 
+  // --- 1. FUNÇÃO DE EXPORTAR PDF (APENAS FINANCEIRO) ---
+  Future<void> _gerarPdfMensal() async {
+    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
+
+    try {
+      // Busca os dados do mês atual para o PDF
+      var snapshot = await FirebaseFirestore.instance
+          .collection('financas')
+          .where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(_getInicioMes()))
+          .where('data', isLessThanOrEqualTo: Timestamp.fromDate(_getFimMes()))
+          .orderBy('data', descending: false) // Ordem cronológica para o relatório
+          .get();
+
+      if (mounted) Navigator.pop(context); // Fecha loading
+
+      if (snapshot.docs.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sem dados neste mês para gerar PDF.")));
+        return;
+      }
+
+      // CHAMA SEU GERADOR DE PDF (Você precisará adaptar o PdfGenerator para aceitar dados financeiros)
+      // Exemplo: await PdfGenerator.generateFinanceReport(_mesAtual, snapshot.docs);
+      // Como não tenho seu arquivo pdf_generator.dart atualizado para finanças, vou colocar um aviso:
+      
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("PDF enviado para impressão! (Implementar lógica no PdfGenerator)"),
+        backgroundColor: Colors.blue,
+      ));
+      
+      // DICA: No seu arquivo services/pdf_generator.dart, crie um método:
+      // static Future<void> generateFinanceReport(DateTime data, List<DocumentSnapshot> docs) async { ... }
+
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao gerar PDF: $e")));
+    }
+  }
+
+  // --- 2. FUNÇÃO DE RESUMO ANUAL (ADMIN E FINANCEIRO) ---
+  Future<void> _mostrarRelatorioAnual() async {
+    int ano = _mesAtual.year;
+    DateTime inicioAno = DateTime(ano, 1, 1);
+    DateTime fimAno = DateTime(ano, 12, 31, 23, 59, 59);
+
+    showDialog(
+      context: context, 
+      barrierDismissible: false,
+      builder: (c) => const Center(child: CircularProgressIndicator())
+    );
+
+    try {
+      var snapshot = await FirebaseFirestore.instance
+          .collection('financas')
+          .where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(inicioAno))
+          .where('data', isLessThanOrEqualTo: Timestamp.fromDate(fimAno))
+          .get();
+
+      double totalEntrada = 0;
+      double totalSaida = 0;
+
+      for (var doc in snapshot.docs) {
+        double valor = (doc['valor'] ?? 0).toDouble();
+        if (doc['tipo'] == 'entrada') {
+          totalEntrada += valor;
+        } else {
+          totalSaida += valor;
+        }
+      }
+      double saldo = totalEntrada - totalSaida;
+
+      if (mounted) Navigator.pop(context); // Fecha loading
+
+      // MOSTRA O RESULTADO
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Column(
+              children: [
+                const Text("Resumo Anual", style: TextStyle(fontWeight: FontWeight.bold)),
+                Text("$ano", style: const TextStyle(fontSize: 14, color: Colors.grey)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildInfoColumn("Total Entradas", totalEntrada, Colors.green),
+                const Divider(),
+                _buildInfoColumn("Total Saídas", totalSaida, Colors.red),
+                const Divider(),
+                _buildInfoColumn("Saldo Anual", saldo, saldo >= 0 ? Colors.blue[800]! : Colors.red[800]!),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Fechar")),
+            ],
+          ),
+        );
+      }
+
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao calcular anual: $e")));
+    }
+  }
+
   // --- LÓGICA DE CRUD ---
   Future<void> _salvarTransacao({String? docId}) async {
-    // Validação básica
     if (_valorController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O valor é obrigatório.")));
       return;
@@ -71,10 +203,11 @@ class _FinanceScreenState extends State<FinanceScreen> {
       Map<String, dynamic> dados = {
         'tipo': _tipoSelecionado, 
         'categoria': _categoriaSelecionada,
-        'nome': _nomeController.text.trim(), // Salva o Nome
+        'nome': _nomeController.text.trim(),
         'descricao': _descricaoController.text.trim(),
         'valor': valor,
-        'data': Timestamp.fromDate(DateTime.now()),
+        'data': Timestamp.fromDate(DateTime.now()), 
+        'mes_referencia': Timestamp.fromDate(_mesAtual),
       };
 
       if (docId == null) {
@@ -117,7 +250,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
     if (data != null) {
       _tipoSelecionado = data['tipo'];
       _categoriaSelecionada = data['categoria'];
-      _nomeController.text = data['nome'] ?? ''; // Carrega nome
+      _nomeController.text = data['nome'] ?? '';
       _descricaoController.text = data['descricao'] ?? '';
       _valorController.text = (data['valor'] as double).toStringAsFixed(2).replaceAll('.', ',');
     } else {
@@ -191,7 +324,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                     ),
                     const SizedBox(height: 15),
 
-                    // CAMPO NOME (NOVO)
+                    // CAMPO NOME
                     TextField(
                       controller: _nomeController,
                       decoration: const InputDecoration(
@@ -249,7 +382,22 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isAdmin = AdminConfig.isUserAdmin();
+    if (_isLoadingRole) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    // Permissões
+    bool isFinanceiro = _userRole == 'financeiro';
+    bool isAdmin = _userRole == 'admin';
+
+    // Se não for nem admin nem financeiro, mostra acesso negado
+    if (!isFinanceiro && !isAdmin) {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Financeiro"), backgroundColor: Colors.green[800]),
+        body: const Center(child: Text("Você não tem acesso a este módulo.", style: TextStyle(color: Colors.grey))),
+      );
+    }
+
     String mesFormatado = DateFormat('MMMM yyyy', 'pt_BR').format(_mesAtual).toUpperCase();
 
     return Scaffold(
@@ -257,6 +405,25 @@ class _FinanceScreenState extends State<FinanceScreen> {
         title: const Text("Financeiro", style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.green[800],
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          // BOTÃO RESUMO ANUAL (ADMIN E FINANCEIRO)
+          if (isAdmin || isFinanceiro)
+            IconButton(
+              icon: const Icon(Icons.analytics_outlined),
+              tooltip: "Resumo Anual",
+              onPressed: _mostrarRelatorioAnual,
+            ),
+          
+          // BOTÃO EXPORTAR PDF (APENAS FINANCEIRO)
+          if (isFinanceiro)
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf),
+              tooltip: "Exportar PDF do Mês",
+              onPressed: _gerarPdfMensal,
+            ),
+            
+          const SizedBox(width: 10),
+        ],
       ),
       backgroundColor: Colors.grey[100],
       body: Column(
@@ -279,7 +446,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
             ),
           ),
 
-          // --- LISTA E RESUMO ---
+          // --- CONTEÚDO (STREAM) ---
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -294,44 +461,82 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
                 final docs = snapshot.data!.docs;
 
-                // --- CÁLCULO DOS TOTAIS ---
+                // --- CÁLCULO GERAL (COMUM A TODOS) ---
                 double totalEntrada = 0;
                 double totalSaida = 0;
+                
+                // --- CÁLCULOS ESPECÍFICOS PARA O DASHBOARD DO ADMIN ---
+                double totalDizimo = 0;
+                double totalOferta = 0;
+                double totalEBD = 0;
+                double totalOutrasEntradas = 0;
 
                 for (var doc in docs) {
                   final data = doc.data() as Map<String, dynamic>;
                   double valor = (data['valor'] ?? 0).toDouble();
+                  String cat = data['categoria'] ?? '';
+
                   if (data['tipo'] == 'entrada') {
                     totalEntrada += valor;
+                    if (cat == 'Dízimo') totalDizimo += valor;
+                    else if (cat == 'Oferta') totalOferta += valor;
+                    else if (cat == 'EBD') totalEBD += valor;
+                    else totalOutrasEntradas += valor;
                   } else {
                     totalSaida += valor;
                   }
                 }
                 double saldo = totalEntrada - totalSaida;
 
-                return Column(
-                  children: [
-                    // CARD DE RESUMO
-                    Transform.translate(
-                      offset: const Offset(0, -25),
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: const Offset(0, 5))],
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                // ---------------------------------------------
+                // VISÃO DE ADMINISTRADOR (DASHBOARD RESUMIDO)
+                // ---------------------------------------------
+                if (isAdmin) {
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                         // CARD DE SALDO GERAL
+                        _buildSaldoCard(totalEntrada, totalSaida, saldo),
+                        const SizedBox(height: 20),
+                        
+                        const Text("Detalhamento de Entradas", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 10),
+                        
+                        // GRID DE ENTRADAS
+                        GridView.count(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          childAspectRatio: 1.5,
                           children: [
-                            _buildInfoColumn("Entradas", totalEntrada, Colors.green),
-                            _buildInfoColumn("Saídas", totalSaida, Colors.red),
-                            Container(width: 1, height: 40, color: Colors.grey[300]),
-                            _buildInfoColumn("Saldo", saldo, saldo >= 0 ? Colors.blue[800]! : Colors.red[800]!),
+                            _buildDashCard("Dízimos", totalDizimo, Colors.green),
+                            _buildDashCard("Ofertas", totalOferta, Colors.lightGreen),
+                            _buildDashCard("EBD", totalEBD, Colors.teal),
+                            _buildDashCard("Outros", totalOutrasEntradas, Colors.blueGrey),
                           ],
                         ),
-                      ),
+
+                        const SizedBox(height: 20),
+                        const Text("Resumo de Saídas", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 10),
+                         _buildDashCard("Total de Despesas", totalSaida, Colors.red, isWide: true),
+                      ],
+                    ),
+                  );
+                }
+
+                // ---------------------------------------------
+                // VISÃO DO FINANCEIRO (COMPLETA COM LISTA)
+                // ---------------------------------------------
+                return Column(
+                  children: [
+                    // CARD DE SALDO
+                    Transform.translate(
+                      offset: const Offset(0, -25),
+                      child: _buildSaldoCard(totalEntrada, totalSaida, saldo),
                     ),
 
                     // LISTA DE LANÇAMENTOS
@@ -348,12 +553,11 @@ class _FinanceScreenState extends State<FinanceScreen> {
                               bool isEntrada = data['tipo'] == 'entrada';
                               double valor = (data['valor'] ?? 0).toDouble();
                               String categoria = data['categoria'] ?? "";
-                              String nome = data['nome'] ?? ""; // Pega o nome
+                              String nome = data['nome'] ?? "";
                               String descricao = data['descricao'] ?? "";
                               DateTime dataTransacao = (data['data'] as Timestamp).toDate();
                               String dia = DateFormat('dd/MM').format(dataTransacao);
 
-                              // Monta o subtítulo inteligente
                               String subtitulo = "$dia";
                               if (nome.isNotEmpty) subtitulo += " - $nome";
                               if (descricao.isNotEmpty) subtitulo += " ($descricao)";
@@ -383,19 +587,18 @@ class _FinanceScreenState extends State<FinanceScreen> {
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                      if (isAdmin) 
-                                        PopupMenuButton<String>(
-                                          padding: EdgeInsets.zero,
-                                          icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
-                                          onSelected: (v) {
-                                            if (v == 'edit') _showFormDialog(docId: id, data: data);
-                                            if (v == 'delete') _excluirTransacao(id);
-                                          },
-                                          itemBuilder: (ctx) => [
-                                            const PopupMenuItem(value: 'edit', child: Text("Editar")),
-                                            const PopupMenuItem(value: 'delete', child: Text("Excluir", style: TextStyle(color: Colors.red))),
-                                          ],
-                                        )
+                                      PopupMenuButton<String>(
+                                        padding: EdgeInsets.zero,
+                                        icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
+                                        onSelected: (v) {
+                                          if (v == 'edit') _showFormDialog(docId: id, data: data);
+                                          if (v == 'delete') _excluirTransacao(id);
+                                        },
+                                        itemBuilder: (ctx) => [
+                                          const PopupMenuItem(value: 'edit', child: Text("Editar")),
+                                          const PopupMenuItem(value: 'delete', child: Text("Excluir", style: TextStyle(color: Colors.red))),
+                                        ],
+                                      )
                                     ],
                                   ),
                                 ),
@@ -410,13 +613,37 @@ class _FinanceScreenState extends State<FinanceScreen> {
           ),
         ],
       ),
-      floatingActionButton: isAdmin 
+      // Botão Flutuante (Apenas para Financeiro)
+      floatingActionButton: (isFinanceiro) 
         ? FloatingActionButton(
             backgroundColor: Colors.green[800],
             onPressed: () => _showFormDialog(),
             child: const Icon(Icons.add, color: Colors.white),
           )
         : null,
+    );
+  }
+
+  // --- WIDGETS AUXILIARES ---
+
+  Widget _buildSaldoCard(double entrada, double saida, double saldo) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: const Offset(0, 5))],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildInfoColumn("Entradas", entrada, Colors.green),
+          _buildInfoColumn("Saídas", saida, Colors.red),
+          Container(width: 1, height: 40, color: Colors.grey[300]),
+          _buildInfoColumn("Saldo", saldo, saldo >= 0 ? Colors.blue[800]! : Colors.red[800]!),
+        ],
+      ),
     );
   }
 
@@ -431,6 +658,29 @@ class _FinanceScreenState extends State<FinanceScreen> {
           style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14),
         ),
       ],
+    );
+  }
+
+  Widget _buildDashCard(String title, double value, Color color, {bool isWide = false}) {
+    return Container(
+      width: isWide ? double.infinity : null,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text(
+            NumberFormat.simpleCurrency(locale: 'pt_BR').format(value),
+            style: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
     );
   }
 }

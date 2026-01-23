@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.iec_app"
-    compileSdk = 34 // Mantemos 34 (Android 14)
+    compileSdk = 34
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -30,8 +30,8 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
-            // Desativa a minificação para evitar erros de recursos sumindo
-            isMinifyEnabled = false 
+            // Em Kotlin, usamos isMinifyEnabled em vez de minifyEnabled
+            isMinifyEnabled = false
             isShrinkResources = false
         }
     }
@@ -41,19 +41,26 @@ flutter {
     source = "../.."
 }
 
-// --- SOLUÇÃO DEFINITIVA (VACINA DE VERSÕES) ---
+// --- SOLUÇÃO DEFINITIVA (VACINA TRADUZIDA PARA KOTLIN) ---
 configurations.all {
     resolutionStrategy {
         eachDependency {
-            // 1. Corrige o erro "requires Android SDK 36"
+            // 1. Corrige o erro "requires Android SDK 36" (Browser)
+            if (requested.group == "androidx.browser") {
+                useVersion("1.8.0")
+            }
+
+            // 2. Corrige incompatibilidades de Activity
             if (requested.group == "androidx.activity") {
-                useVersion("1.9.3") // Versão estável
+                useVersion("1.9.3")
             }
-            // 2. Corrige o erro "lStar not found"
+
+            // 3. Corrige o erro "lStar not found" e Core
             if (requested.group == "androidx.core") {
-                useVersion("1.13.1") // Versão que tem o lStar corrigido
+                useVersion("1.13.1")
             }
-            // 3. Garante compatibilidade do Lifecycle
+
+            // 4. Garante compatibilidade do Lifecycle
             if (requested.group == "androidx.lifecycle") {
                 useVersion("2.8.6")
             }

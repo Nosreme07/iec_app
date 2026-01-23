@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import '../utils/admin_config.dart';
 import 'add_event_screen.dart';
 
 class AgendaScreen extends StatefulWidget {
@@ -51,16 +51,18 @@ class _AgendaScreenState extends State<AgendaScreen> {
   }
 
   Future<void> _carregarPrioridades() async {
-    if (!AdminConfig.isUserAdmin()) return;
-
     String semanaId = _getSemanaId();
     _prioridadesController.text = "";
 
-    var doc = await FirebaseFirestore.instance.collection('agenda_avisos').doc(semanaId).get();
-    if (doc.exists && mounted) {
-      setState(() {
-        _prioridadesController.text = doc['texto'] ?? "";
-      });
+    try {
+      var doc = await FirebaseFirestore.instance.collection('agenda_avisos').doc(semanaId).get();
+      if (doc.exists && mounted) {
+        setState(() {
+          _prioridadesController.text = doc['texto'] ?? "";
+        });
+      }
+    } catch (e) {
+      print("Erro ao carregar prioridades: $e");
     }
   }
 
@@ -112,9 +114,9 @@ class _AgendaScreenState extends State<AgendaScreen> {
     if (confirm) await FirebaseFirestore.instance.collection('agenda').doc(id).delete();
   }
 
-  // --- NOVA FUNÇÃO: POPUP COM DETALHES ---
-  void _showEventDetails(String id, Map<String, dynamic> data) {
-    bool isAdmin = AdminConfig.isUserAdmin();
+  // --- POPUP COM DETALHES ---
+  // Agora recebe 'canManage' em vez de apenas 'isAdmin'
+  void _showEventDetails(String id, Map<String, dynamic> data, bool canManage) {
     
     String hora = DateFormat('HH:mm').format((data['data_hora'] as Timestamp).toDate());
     String titulo = data['titulo'] ?? data['tipo'] ?? "Evento";
@@ -156,22 +158,22 @@ class _AgendaScreenState extends State<AgendaScreen> {
             ),
           ),
           actions: [
-            // BOTÕES DE AÇÃO (SÓ PARA ADMIN)
-            if (isAdmin) ...[
+            // BOTÕES DE AÇÃO (SÓ SE TIVER PERMISSÃO)
+            if (canManage) ...[
               TextButton.icon(
                 icon: const Icon(Icons.delete, color: Colors.red, size: 20),
                 label: const Text("Excluir", style: TextStyle(color: Colors.red)),
                 onPressed: () {
-                  Navigator.pop(ctx); // Fecha o popup de detalhes
-                  _deleteEvent(id);   // Abre a confirmação de exclusão
+                  Navigator.pop(ctx); 
+                  _deleteEvent(id);
                 },
               ),
               TextButton.icon(
                 icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
                 label: const Text("Editar", style: TextStyle(color: Colors.blue)),
                 onPressed: () {
-                  Navigator.pop(ctx); // Fecha o popup
-                  _editEvent(id, data); // Vai para tela de edição
+                  Navigator.pop(ctx); 
+                  _editEvent(id, data); 
                 },
               ),
             ],
@@ -209,69 +211,92 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isAdmin = AdminConfig.isUserAdmin();
-    DateTime fimDaSemana = _inicioDaSemana.add(const Duration(days: 7));
-    String intervaloTexto = "${DateFormat('dd MMM').format(_inicioDaSemana)} - ${DateFormat('dd MMM').format(fimDaSemana.subtract(const Duration(days: 1)))}";
+    final user = FirebaseAuth.instance.currentUser;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          children: [
-            const Text("Agenda Semanal", style: TextStyle(color: Colors.white, fontSize: 16)),
-            Text(intervaloTexto, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-          ],
-        ),
-        backgroundColor: Colors.indigo,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(icon: const Icon(Icons.arrow_back_ios, size: 18), onPressed: () => _trocarSemana(-1), tooltip: "Semana Anterior"),
-          IconButton(icon: const Icon(Icons.calendar_today, size: 20), onPressed: () {
-              setState(() {
-                _dataFocada = DateTime.now();
-                _calcularInicioSemana();
-              });
-              _carregarPrioridades();
-            }, tooltip: "Semana Atual"),
-          IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 18), onPressed: () => _trocarSemana(1), tooltip: "Próxima Semana"),
-        ],
-      ),
-      backgroundColor: Colors.grey[100],
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('agenda')
-            .where('data_hora', isGreaterThanOrEqualTo: Timestamp.fromDate(_inicioDaSemana))
-            .where('data_hora', isLessThan: Timestamp.fromDate(fimDaSemana))
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Text("Erro: ${snapshot.error}"));
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+    if (user == null) return const Center(child: CircularProgressIndicator());
 
-          final allDocs = snapshot.data!.docs;
+    // 1. STREAM PRINCIPAL: Verifica permissões
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, userSnapshot) {
+        
+        bool canManage = false;
+        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+           final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+           String role = userData['role'] ?? 'membro';
+           
+           // --- MUDANÇA: ADMIN OU FINANCEIRO PODEM GERENCIAR A AGENDA ---
+           canManage = role == 'admin' || role == 'financeiro';
+        }
 
-          return GridView.builder(
-            padding: const EdgeInsets.all(10),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.55, 
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
+        DateTime fimDaSemana = _inicioDaSemana.add(const Duration(days: 7));
+        String intervaloTexto = "${DateFormat('dd MMM').format(_inicioDaSemana)} - ${DateFormat('dd MMM').format(fimDaSemana.subtract(const Duration(days: 1)))}";
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Column(
+              children: [
+                const Text("Agenda Semanal", style: TextStyle(color: Colors.white, fontSize: 16)),
+                Text(intervaloTexto, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              ],
             ),
-            itemCount: 8,
-            itemBuilder: (context, index) {
-              if (index < 7) {
-                DateTime dayDate = _inicioDaSemana.add(Duration(days: index));
-                return _buildDayCard(dayDate, allDocs, isAdmin);
-              } else {
-                return _buildPriorityCard(isAdmin);
-              }
+            backgroundColor: Colors.indigo,
+            iconTheme: const IconThemeData(color: Colors.white),
+            actions: [
+              IconButton(icon: const Icon(Icons.arrow_back_ios, size: 18), onPressed: () => _trocarSemana(-1), tooltip: "Semana Anterior"),
+              IconButton(icon: const Icon(Icons.calendar_today, size: 20), onPressed: () {
+                  setState(() {
+                    _dataFocada = DateTime.now();
+                    _calcularInicioSemana();
+                  });
+                  _carregarPrioridades();
+                }, tooltip: "Semana Atual"),
+              IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 18), onPressed: () => _trocarSemana(1), tooltip: "Próxima Semana"),
+            ],
+          ),
+          backgroundColor: Colors.grey[100],
+          
+          // 2. STREAM DA AGENDA
+          body: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('agenda')
+                .where('data_hora', isGreaterThanOrEqualTo: Timestamp.fromDate(_inicioDaSemana))
+                .where('data_hora', isLessThan: Timestamp.fromDate(fimDaSemana))
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) return Center(child: Text("Erro: ${snapshot.error}"));
+              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+
+              final allDocs = snapshot.data!.docs;
+
+              return GridView.builder(
+                padding: const EdgeInsets.all(10),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  childAspectRatio: 0.55, 
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                ),
+                itemCount: 8,
+                itemBuilder: (context, index) {
+                  if (index < 7) {
+                    DateTime dayDate = _inicioDaSemana.add(Duration(days: index));
+                    // Passamos canManage para o card
+                    return _buildDayCard(dayDate, allDocs, canManage);
+                  } else {
+                    // Passamos canManage para o card de avisos
+                    return _buildPriorityCard(canManage);
+                  }
+                },
+              );
             },
-          );
-        },
-      ),
+          ),
+        );
+      }
     );
   }
 
-  Widget _buildDayCard(DateTime dayDate, List<QueryDocumentSnapshot> allDocs, bool isAdmin) {
+  Widget _buildDayCard(DateTime dayDate, List<QueryDocumentSnapshot> allDocs, bool canManage) {
     String diaSemana = DateFormat('EEEE', 'pt_BR').format(dayDate);
     String diaMes = DateFormat('dd/MM').format(dayDate);
     bool isToday = dayDate.day == DateTime.now().day && dayDate.month == DateTime.now().month && dayDate.year == DateTime.now().year;
@@ -319,8 +344,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     final colors = _eventColors[i % _eventColors.length];
 
                     return InkWell(
-                      // --- ALTERAÇÃO AQUI: Abre o popup para TODOS ---
-                      onTap: () => _showEventDetails(dayEvents[i].id, data),
+                      // Passa canManage para o popup
+                      onTap: () => _showEventDetails(dayEvents[i].id, data, canManage),
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 6),
@@ -350,7 +375,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 ),
           ),
 
-          if (isAdmin)
+          // BOTÃO ADICIONAR (SÓ SE TIVER PERMISSÃO)
+          if (canManage)
             InkWell(
               onTap: () => _addEvent(dayDate),
               child: Container(
@@ -365,7 +391,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
     );
   }
 
-  Widget _buildPriorityCard(bool isAdmin) {
+  Widget _buildPriorityCard(bool canManage) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.yellow[50], 
@@ -385,7 +411,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 const Expanded(
                   child: Text("Avisos", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown)),
                 ),
-                if (isAdmin)
+                // ÍCONE DE SALVAR (SÓ SE TIVER PERMISSÃO)
+                if (canManage)
                   SizedBox(
                     height: 24,
                     width: 24,
@@ -405,7 +432,9 @@ class _AgendaScreenState extends State<AgendaScreen> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(8.0),
-              child: isAdmin 
+              // SE FOR GESTOR: TextField Editável
+              // SE NÃO: Texto simples (read-only)
+              child: canManage 
                 ? TextField( 
                     controller: _prioridadesController,
                     maxLines: 20, 

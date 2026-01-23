@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../utils/admin_config.dart'; // Para verificar se é admin
-import 'admin_register_screen.dart'; // Para navegar para a tela de cadastro
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -134,7 +132,11 @@ class ProfileScreen extends StatelessWidget {
           String fotoUrl = get('foto_url');
           String cargo = get('cargo_atual');
           String oficial = get('oficial_igreja');
+          
+          // Verifica roles para exibir o "crachá"
           bool isAdmin = get('role') == 'admin';
+          bool isFinanceiro = get('role') == 'financeiro';
+          bool isVisitante = get('role') == 'visitante';
 
           // Subtítulo (Cargo / Oficial)
           String subtitulo = cargo.isNotEmpty ? cargo : "Membro";
@@ -171,12 +173,32 @@ class ProfileScreen extends StatelessWidget {
                         decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
                         child: Text(subtitulo.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
                       ),
+                      
+                      // ETIQUETAS DE CARGO (VISUAIS)
                       if (isAdmin)
                         Padding(
                           padding: const EdgeInsets.only(top: 8.0),
                           child: Chip(
                             label: const Text("ADMINISTRADOR", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.deepOrange)),
                             backgroundColor: Colors.orange[50],
+                            padding: const EdgeInsets.all(0),
+                          ),
+                        ),
+                      if (isFinanceiro)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Chip(
+                            label: const Text("FINANCEIRO", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
+                            backgroundColor: Colors.green[50],
+                            padding: const EdgeInsets.all(0),
+                          ),
+                        ),
+                      if (isVisitante)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Chip(
+                            label: const Text("VISITANTE", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.purple)),
+                            backgroundColor: Colors.purple[50],
                             padding: const EdgeInsets.all(0),
                           ),
                         ),
@@ -188,22 +210,7 @@ class ProfileScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     children: [
-                      // --- ÁREA DE AÇÕES (ADMIN E SENHA) ---
-                      if (isAdmin) ...[
-                        _buildSectionHeader("Administração"),
-                        Card(
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: ListTile(
-                            leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.green[100], borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.person_add, color: Colors.green)),
-                            title: const Text("Cadastrar Novo Membro", style: TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: const Text("Criar login para irmãos"),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminRegisterScreen())),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                      ],
+                      // --- AQUI FOI REMOVIDO O BLOCO DE CADASTRO NOVO ---
 
                       _buildSectionHeader("Minha Conta"),
                       Card(

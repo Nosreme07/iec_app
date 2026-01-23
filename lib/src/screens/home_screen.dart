@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../utils/admin_config.dart'; 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'profile_screen.dart';
 import 'bible_screen.dart';
 import 'hymnal_screen.dart';
@@ -8,7 +9,7 @@ import 'agenda_screen.dart';
 import 'annual_agenda_screen.dart';
 import 'scale_screen.dart';
 import 'patrimonio_screen.dart'; 
-import 'finance_screen.dart'; // Import da tela de finanças
+import 'finance_screen.dart'; 
 
 import '../widgets/home_notices_widget.dart'; 
 import '../widgets/monthly_birthdays_widget.dart'; 
@@ -66,173 +67,169 @@ class HomeContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Verifica na configuração se o usuário logado é Admin
-    final bool isAdmin = AdminConfig.isUserAdmin();
+    final user = FirebaseAuth.instance.currentUser;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "Bem-vindo à IEC-Moreno!",
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 20),
+    // Se não estiver logado, mostra carregando
+    if (user == null) return const Center(child: CircularProgressIndicator());
 
-          // --- GRADE DE ÍCONES ---
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            // Layout de 3 colunas
-            crossAxisCount: 3,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-            childAspectRatio: 0.85,
+    // USAMOS STREAMBUILDER PARA LER A "ROLE" DO BANCO EM TEMPO REAL
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        
+        // Enquanto carrega ou se der erro, assume que é membro comum por segurança
+        String role = 'membro';
+        
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          role = data['role'] ?? 'membro';
+        }
 
+        // --- DEFINIÇÃO DE QUEM PODE VER O BOTÃO ---
+        bool canViewFinance = role == 'admin' || role == 'financeiro';
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. BÍBLIA
-              _buildMenuCard(
-                context,
-                icon: Icons.menu_book,
-                label: "Bíblia",
-                color: Colors.brown,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const BibleScreen()),
-                  );
-                },
+              const Text(
+                "Bem-vindo à IEC-Moreno!",
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
+              const SizedBox(height: 20),
 
-              // 2. SALMOS E HINOS
-              _buildMenuCard(
-                context,
-                icon: Icons.library_music,
-                label: "Salmos & Hinos",
-                color: Colors.orange,
-                onTap: () {
-                  Navigator.push(
+              // --- GRADE DE ÍCONES ---
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                // Layout de 3 colunas
+                crossAxisCount: 3,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 0.85,
+
+                children: [
+                  // 1. BÍBLIA
+                  _buildMenuCard(
                     context,
-                    MaterialPageRoute(builder: (context) => const HymnalScreen()),
-                  );
-                },
-              ),
+                    icon: Icons.menu_book,
+                    label: "Bíblia",
+                    color: Colors.brown,
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const BibleScreen()));
+                    },
+                  ),
 
-              // 3. AGENDA SEMANAL
-              _buildMenuCard(
-                context,
-                icon: Icons.calendar_view_week,
-                label: "Agenda Semanal",
-                color: Colors.blue,
-                onTap: () {
-                  Navigator.push(
+                  // 2. SALMOS E HINOS
+                  _buildMenuCard(
                     context,
-                    MaterialPageRoute(builder: (context) => const AgendaScreen()),
-                  );
-                },
-              ),
+                    icon: Icons.library_music,
+                    label: "Salmos & Hinos",
+                    color: Colors.orange,
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()));
+                    },
+                  ),
 
-              // 4. AGENDA ANUAL
-              _buildMenuCard(
-                context,
-                icon: Icons.calendar_month,
-                label: "Agenda Anual",
-                color: Colors.purple,
-                onTap: () {
-                  Navigator.push(
+                  // 3. AGENDA SEMANAL
+                  _buildMenuCard(
                     context,
-                    MaterialPageRoute(builder: (context) => const AnnualAgendaScreen()),
-                  );
-                },
-              ),
+                    icon: Icons.calendar_view_week,
+                    label: "Agenda Semanal",
+                    color: Colors.blue,
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const AgendaScreen()));
+                    },
+                  ),
 
-              // 5. ESCALA
-              _buildMenuCard(
-                context,
-                icon: Icons.view_timeline,
-                label: "Escala",
-                color: Colors.teal,
-                onTap: () {
-                  Navigator.push(
+                  // 4. AGENDA ANUAL
+                  _buildMenuCard(
                     context,
-                    MaterialPageRoute(builder: (context) => const ScaleScreen()),
-                  );  
-                },
-              ),
+                    icon: Icons.calendar_month,
+                    label: "Agenda Anual",
+                    color: Colors.purple,
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const AnnualAgendaScreen()));
+                    },
+                  ),
 
-              // 6. PATRIMÔNIO
-              _buildMenuCard(
-                context,
-                icon: Icons.inventory_2,
-                label: "Patrimônio",
-                color: Colors.blueGrey,
-                onTap: () {
-                  Navigator.push(
+                  // 5. ESCALA
+                  _buildMenuCard(
                     context,
-                    MaterialPageRoute(builder: (context) => const PatrimonioScreen()),
-                  );  
-                },
-              ),
+                    icon: Icons.view_timeline,
+                    label: "Escala",
+                    color: Colors.teal,
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const ScaleScreen()));
+                    },
+                  ),
 
-              // 7. MEMBROS
-              _buildMenuCard(
-                context,
-                icon: Icons.groups,
-                label: "Membros",
-                color: Colors.indigo,
-                onTap: () {
-                  Navigator.push(
+                  // 6. PATRIMÔNIO
+                  _buildMenuCard(
                     context,
-                    MaterialPageRoute(builder: (context) => const MembersScreen()),
-                  );
-                },
-              ),
+                    icon: Icons.inventory_2,
+                    label: "Patrimônio",
+                    color: Colors.blueGrey,
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const PatrimonioScreen()));
+                    },
+                  ),
 
-              // 8. FINANÇAS (SÓ APARECE SE FOR ADMIN)
-              if (isAdmin)
-                _buildMenuCard(
-                  context,
-                  icon: Icons.attach_money,
-                  label: "Finanças",
-                  color: Colors.green[700]!,
-                  onTap: () {
-                    Navigator.push(
+                  // 7. MEMBROS
+                  _buildMenuCard(
+                    context,
+                    icon: Icons.groups,
+                    label: "Membros",
+                    color: Colors.indigo,
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const MembersScreen()));
+                    },
+                  ),
+
+                  // 8. FINANÇAS (CONDICIONAL: ADMIN OU FINANCEIRO)
+                  if (canViewFinance)
+                    _buildMenuCard(
                       context,
-                      MaterialPageRoute(builder: (context) => const FinanceScreen()),
-                    );
-                  },
+                      icon: Icons.attach_money,
+                      label: "Finanças",
+                      color: Colors.green[700]!,
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()));
+                      },
+                    ),
+                ],
+              ),
+
+              const SizedBox(height: 30),
+
+              // --- 1. AVISOS DA SEMANA (LETREIRO) ---
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4.0),
+                child: Text(
+                  "Avisos da Semana",
+                  style: TextStyle(
+                    fontSize: 18, 
+                    fontWeight: FontWeight.bold, 
+                    color: Colors.black87
+                  ),
                 ),
+              ),
+              const SizedBox(height: 10),
+              
+              // Carrossel dinâmico
+              const WeeklyNoticesWidget(),
+
+              const SizedBox(height: 20),
+
+              // --- 2. ANIVERSARIANTES DO MÊS ---
+              const MonthlyBirthdaysWidget(),
+
+              const SizedBox(height: 30), // Espaço final
             ],
           ),
-
-          const SizedBox(height: 30),
-
-          // --- 1. AVISOS DA SEMANA (LETREIRO) ---
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4.0),
-            child: Text(
-              "Avisos da Semana",
-              style: TextStyle(
-                fontSize: 18, 
-                fontWeight: FontWeight.bold, 
-                color: Colors.black87
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          
-          // Carrossel dinâmico
-          const WeeklyNoticesWidget(),
-
-          const SizedBox(height: 20),
-
-          // --- 2. ANIVERSARIANTES DO MÊS ---
-          const MonthlyBirthdaysWidget(),
-
-          const SizedBox(height: 30), // Espaço final
-        ],
-      ),
+        );
+      }
     );
   }
 
@@ -257,7 +254,7 @@ class HomeContent extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1), // Atualizado para withValues se seu Flutter for muito novo, senão use withOpacity
+                color: color.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, size: 30, color: color),

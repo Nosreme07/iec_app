@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Adicionado
 import 'package:qr_flutter/qr_flutter.dart';
-import '../utils/admin_config.dart';
 
 class PatrimonioScreen extends StatefulWidget {
   const PatrimonioScreen({super.key});
@@ -18,7 +18,6 @@ class _PatrimonioScreenState extends State<PatrimonioScreen> {
   final TextEditingController _qrCodeController = TextEditingController();
   
   // Variável para o Dropdown (Situação)
-  // Valor padrão: 'Em uso'
   String _situacaoSelecionada = 'Em uso';
   final List<String> _opcoesSituacao = ['Em uso', 'Descartado', 'Vendido'];
 
@@ -54,7 +53,6 @@ class _PatrimonioScreenState extends State<PatrimonioScreen> {
       String obs = _observacoesController.text.trim();
       if (obs.isEmpty) obs = "Sem observações";
 
-      // Incluímos a situação no QR Code também
       String textoQR = """
 IGREJA EVANGÉLICA CONGREGACIONAL EM MORENO
 CNPJ: 30.057.670.0001-05
@@ -89,7 +87,7 @@ Código: $codigoSequencial""";
         'nome': _nomeController.text.trim(),
         'quantidade': qtd,
         'observacoes': _observacoesController.text.trim(),
-        'situacao': _situacaoSelecionada, // Salva a situação escolhida
+        'situacao': _situacaoSelecionada,
         'qr_code_data': _qrCodeController.text.trim(),
         'data_atualizacao': FieldValue.serverTimestamp(),
       };
@@ -130,20 +128,18 @@ Código: $codigoSequencial""";
 
     if (confirm) {
       await FirebaseFirestore.instance.collection('tombamento').doc(docId).delete();
-      if (mounted) Navigator.pop(context); // Fecha o popup de detalhes após excluir
+      if (mounted) Navigator.pop(context); // Fecha o popup de detalhes
     }
   }
 
-  // --- POPUP DE DETALHES (LEITURA) ---
-  void _showDetailsDialog(String docId, Map<String, dynamic> data) {
-    bool isAdmin = AdminConfig.isUserAdmin();
+  // --- POPUP DE DETALHES (Recebe canManage) ---
+  void _showDetailsDialog(String docId, Map<String, dynamic> data, bool canManage) {
     String nome = data['nome'] ?? "Sem Nome";
     double qtd = (data['quantidade'] ?? 0).toDouble();
     String obs = data['observacoes'] ?? "Sem observações";
     String situacao = data['situacao'] ?? "Em uso";
     String qrData = data['qr_code_data'] ?? "";
 
-    // Define cor baseada na situação
     Color corSituacao = Colors.green;
     if (situacao == 'Descartado') corSituacao = Colors.red;
     if (situacao == 'Vendido') corSituacao = Colors.blue;
@@ -194,23 +190,23 @@ Código: $codigoSequencial""";
             ),
           ),
           actions: [
-            // BOTÕES DE ADMIN (EDITAR E EXCLUIR)
-            if (isAdmin) ...[
+            // BOTÕES DE ADMIN OU FINANCEIRO (EDITAR E EXCLUIR)
+            if (canManage) ...[
               TextButton.icon(
                 icon: const Icon(Icons.delete, color: Colors.red, size: 20),
                 label: const Text("Excluir", style: TextStyle(color: Colors.red)),
-                onPressed: () => _excluirItem(docId), // Vai abrir confirmação
+                onPressed: () => _excluirItem(docId),
               ),
               TextButton.icon(
                 icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
                 label: const Text("Editar", style: TextStyle(color: Colors.blue)),
                 onPressed: () {
-                  Navigator.pop(ctx); // Fecha o de detalhes
-                  _showFormDialog(docId: docId, data: data); // Abre o de edição
+                  Navigator.pop(ctx); 
+                  _showFormDialog(docId: docId, data: data); 
                 },
               ),
             ],
-            // BOTÃO FECHAR (PARA TODOS)
+            // BOTÃO FECHAR
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Fechar")),
           ],
         );
@@ -235,13 +231,13 @@ Código: $codigoSequencial""";
       _quantidadeController.text = (data['quantidade'] ?? 0).toString();
       _observacoesController.text = data['observacoes'] ?? '';
       _qrCodeController.text = data['qr_code_data'] ?? '';
-      _situacaoSelecionada = data['situacao'] ?? 'Em uso'; // Carrega situação salva
+      _situacaoSelecionada = data['situacao'] ?? 'Em uso';
     } else {
       _nomeController.clear();
       _quantidadeController.clear();
       _observacoesController.clear();
       _qrCodeController.clear();
-      _situacaoSelecionada = 'Em uso'; // Padrão
+      _situacaoSelecionada = 'Em uso';
     }
 
     showDialog(
@@ -341,88 +337,106 @@ Código: $codigoSequencial""";
 
   @override
   Widget build(BuildContext context) {
-    final bool isAdmin = AdminConfig.isUserAdmin();
+    final user = FirebaseAuth.instance.currentUser;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Controle de Patrimônio", style: TextStyle(color: Colors.white, fontSize: 18)),
-        backgroundColor: Colors.indigo,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      backgroundColor: Colors.grey[100],
-      
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('tombamento').orderBy('nome').snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) return const Center(child: Text("Erro ao carregar dados."));
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+    if (user == null) return const Center(child: CircularProgressIndicator());
 
-          final docs = snapshot.data!.docs;
+    // 1. STREAM PARA VERIFICAR PERMISSÕES
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, userSnapshot) {
+        
+        bool canManage = false;
+        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+           final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+           String role = userData['role'] ?? 'membro';
+           
+           // --- AQUI ESTÁ A MUDANÇA: Admin OU Financeiro têm poder total ---
+           canManage = role == 'admin' || role == 'financeiro';
+        }
 
-          if (docs.isEmpty) {
-            return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.inventory_2_outlined, size: 60, color: Colors.grey[400]), const SizedBox(height: 10), Text("Nenhum item registrado.", style: TextStyle(color: Colors.grey[600]))]));
-          }
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text("Controle de Patrimônio", style: TextStyle(color: Colors.white, fontSize: 18)),
+            backgroundColor: Colors.indigo,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          backgroundColor: Colors.grey[100],
+          
+          // 2. STREAM DOS ITENS
+          body: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('tombamento').orderBy('nome').snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) return const Center(child: Text("Erro ao carregar dados."));
+              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(10),
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final data = docs[index].data() as Map<String, dynamic>;
-              final id = docs[index].id;
-              
-              String nome = data['nome'] ?? "Sem Nome";
-              double qtd = (data['quantidade'] ?? 0).toDouble();
-              String observacoes = data['observacoes'] ?? "";
-              String situacao = data['situacao'] ?? "Em uso";
-              String qrFullText = data['qr_code_data'] ?? "";
-              
-              // Cor da bolinha de status
-              Color statusColor = Colors.green;
-              if (situacao == 'Descartado') statusColor = Colors.red;
-              if (situacao == 'Vendido') statusColor = Colors.blue;
+              final docs = snapshot.data!.docs;
 
-              return Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                margin: const EdgeInsets.only(bottom: 10),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: qrFullText.isNotEmpty 
-                      ? Icon(Icons.qr_code_2, color: Colors.indigo[800], size: 30)
-                      : const Icon(Icons.label_outline, color: Colors.indigo),
-                  title: Text(nome, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+              if (docs.isEmpty) {
+                return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.inventory_2_outlined, size: 60, color: Colors.grey[400]), const SizedBox(height: 10), Text("Nenhum item registrado.", style: TextStyle(color: Colors.grey[600]))]));
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(10),
+                itemCount: docs.length,
+                itemBuilder: (context, index) {
+                  final data = docs[index].data() as Map<String, dynamic>;
+                  final id = docs[index].id;
+                  
+                  String nome = data['nome'] ?? "Sem Nome";
+                  double qtd = (data['quantidade'] ?? 0).toDouble();
+                  String observacoes = data['observacoes'] ?? "";
+                  String situacao = data['situacao'] ?? "Em uso";
+                  String qrFullText = data['qr_code_data'] ?? "";
+                  
+                  Color statusColor = Colors.green;
+                  if (situacao == 'Descartado') statusColor = Colors.red;
+                  if (situacao == 'Vendido') statusColor = Colors.blue;
+
+                  return Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      leading: qrFullText.isNotEmpty 
+                          ? Icon(Icons.qr_code_2, color: Colors.indigo[800], size: 30)
+                          : const Icon(Icons.label_outline, color: Colors.indigo),
+                      title: Text(nome, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
-                          const SizedBox(width: 5),
-                          Text(situacao, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 10),
-                          Text("|  Qtd: ${qtd.toInt()}", style: const TextStyle(fontSize: 12)),
+                          Row(
+                            children: [
+                              Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
+                              const SizedBox(width: 5),
+                              Text(situacao, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                              const SizedBox(width: 10),
+                              Text("|  Qtd: ${qtd.toInt()}", style: const TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                          if (observacoes.isNotEmpty)
+                            Text(observacoes, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                         ],
                       ),
-                      if (observacoes.isNotEmpty)
-                        Text(observacoes, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                    ],
-                  ),
-                  // O clique abre os detalhes (onde estão os botões de edição se for admin)
-                  onTap: () => _showDetailsDialog(id, data),
-                ),
+                      // Passa canManage para o popup
+                      onTap: () => _showDetailsDialog(id, data, canManage),
+                    ),
+                  );
+                },
               );
             },
-          );
-        },
-      ),
-      
-      floatingActionButton: isAdmin 
-        ? FloatingActionButton(
-            backgroundColor: Colors.indigo,
-            onPressed: () => _showFormDialog(), // Abre formulário vazio
-            child: const Icon(Icons.add, color: Colors.white),
-          )
-        : null,
+          ),
+          
+          floatingActionButton: canManage 
+            ? FloatingActionButton(
+                backgroundColor: Colors.indigo,
+                onPressed: () => _showFormDialog(), 
+                child: const Icon(Icons.add, color: Colors.white),
+              )
+            : null,
+        );
+      }
     );
   }
 }

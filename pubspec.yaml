@@ -5,7 +5,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.2.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -14,43 +14,51 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   
+  # Internacionalização (Versão compatível com Flutter atual)
   intl: ^0.20.2
 
-  # Firebase (Deixe o Flutter gerenciar as versões compatíveis)
-  firebase_core: ^2.24.0
-  firebase_auth: ^4.15.0
-  cloud_firestore: ^4.13.0
-  firebase_storage: ^11.5.0
+  # --- FIREBASE (VERSÕES ESTÁVEIS/BLINDADAS) ---
+  # Essas versões evitam o erro "PigeonUserDetails" e tela vermelha
+  firebase_core: ^2.27.0
+  firebase_auth: ^4.17.8
+  cloud_firestore: ^4.15.8
+  firebase_storage: ^11.6.9
   
-  # PDF e Impressão
-  # Versões atualizadas para evitar conflitos de Kotlin
+  # --- PDF e IMPRESSÃO ---
+  # Versões equilibradas para não brigar com o Firebase antigo
   pdf: ^3.10.4
   printing: ^5.12.0
 
-  # Utilitários
+  # --- UTILITÁRIOS ---
   cupertino_icons: ^1.0.2
   image_picker: ^1.0.7
   qr_flutter: ^4.1.0
+  
+  # --- UI e FONTES ---
+  google_fonts: ^6.1.0
+  mask_text_input_formatter: ^2.9.0
+  url_launcher: ^6.2.5
+  provider: ^6.1.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
 
-# --- A VACINA PARA O ERRO SDK 36 ---
-# Isso força o Flutter a usar versões específicas desses pacotes internos
-# que são compatíveis com o Android 34 (seu celular e configuração atual).
+# --- VACINAS DE DEPENDÊNCIA ---
 dependency_overrides:
-  # O culpado principal: força uma versão que não exige SDK 36
+  # Mantemos apenas estas que são críticas para estabilidade do ciclo de vida
   flutter_plugin_android_lifecycle: 2.0.23
-  # O plugin de imagem que também estava puxando o SDK 36
   image_picker_android: 0.8.12+13
+  
+  # NOTA: Removemos path_provider e url_launcher daqui.
+  # Eles vão atualizar sozinhos agora e funcionarão graças 
+  # ao conserto que fizemos no build.gradle.kts.
 
 flutter:
   uses-material-design: true
   
-  # Seus arquivos de configuração e imagens
   assets:
     - assets/json/ARA.json
     - assets/json/hinos.json
-    - assets/
+    # - assets/images/logo.png

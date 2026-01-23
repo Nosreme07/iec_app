@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Banco de dados
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'dart:convert';
-import 'package:flutter/services.dart'; // Para ler o JSON local
-// import 'package:firebase_auth/firebase_auth.dart'; // Não precisa mais aqui, o AdminConfig já cuida disso
-import '../utils/admin_config.dart'; // <--- IMPORTANTE: Importe o arquivo de configuração
+import 'package:flutter/services.dart'; 
+import 'package:firebase_auth/firebase_auth.dart'; 
 
 class HymnalScreen extends StatefulWidget {
   const HymnalScreen({super.key});
@@ -48,8 +47,8 @@ class _HymnalScreenState extends State<HymnalScreen> {
       if (mounted) Navigator.pop(context);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Sucesso! ${hinos.length} hinos enviados!"),
+          const SnackBar(
+            content: Text("Sucesso! Hinos atualizados!"),
             backgroundColor: Colors.green,
           ),
         );
@@ -67,151 +66,164 @@ class _HymnalScreenState extends State<HymnalScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ---------------------------------------------------------
-    // 🔒 VERIFICAÇÃO DE ADMIN (CENTRALIZADA)
-    // Agora verifica a lista de CPFs no arquivo admin_config.dart
-    // ---------------------------------------------------------
-    final bool isAdmin = AdminConfig.isUserAdmin();
-    // ---------------------------------------------------------
+    final user = FirebaseAuth.instance.currentUser;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "Salmos e Hinos",
-          style: TextStyle(color: Colors.white),
-        ),
-        backgroundColor: Colors.orange[800],
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          // BOTÃO DE UPLOAD (Aparece se o CPF estiver na lista de admins)
-          if (isAdmin)
-            IconButton(
-              icon: const Icon(Icons.cloud_upload),
-              tooltip: "Admin: Upload JSON",
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text("Admin: Upload de Hinos"),
-                    content: const Text(
-                      "Isso vai ler o arquivo 'hinos.json' local e atualizar o banco de dados online.\n\nDeseja continuar?",
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text("Cancelar"),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _uploadHinosDoJsonParaFirebase();
-                        },
-                        child: const Text("ENVIAR AGORA"),
-                      ),
-                    ],
-                  ),
-                );
-              },
+    if (user == null) return const Center(child: CircularProgressIndicator());
+
+    // 1. STREAM PARA VERIFICAR PERMISSÕES
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, userSnapshot) {
+        
+        bool canEdit = false;
+        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+          final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+          String role = userData['role'] ?? 'membro';
+          
+          // --- AQUI ESTÁ A MUDANÇA: Admin OU Financeiro podem editar ---
+          canEdit = role == 'admin' || role == 'financeiro';
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text(
+              "Salmos e Hinos",
+              style: TextStyle(color: Colors.white),
             ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // BARRA DE PESQUISA
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              onChanged: (value) {
-                setState(() {
-                  _searchText = value.toLowerCase();
-                });
-              },
-              decoration: InputDecoration(
-                labelText: 'Buscar hino (nome ou número)',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.grey[100],
-              ),
-            ),
-          ),
-
-          // LISTA DE HINOS (DO FIREBASE)
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('hinos')
-                  .orderBy('numero')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError)
-                  return const Center(child: Text("Erro ao carregar."));
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final data = snapshot.data!.docs;
-
-                // Filtro local
-                final filteredData = data.where((doc) {
-                  final hino = doc.data() as Map<String, dynamic>;
-                  final titulo = hino['titulo'].toString().toLowerCase();
-                  final numero = hino['numero'].toString();
-                  return titulo.contains(_searchText) ||
-                      numero.contains(_searchText);
-                }).toList();
-
-                if (filteredData.isEmpty)
-                  return const Center(child: Text("Nenhum hino encontrado."));
-
-                return ListView.builder(
-                  itemCount: filteredData.length,
-                  itemBuilder: (context, index) {
-                    final doc = filteredData[index];
-                    final hino = doc.data() as Map<String, dynamic>;
-                    hino['id'] = doc.id; // Salva ID para edição
-
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 4,
-                      ),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.orange[100],
-                          child: Text(
-                            "${hino['numero']}",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange[900],
-                            ),
+            backgroundColor: Colors.orange[800],
+            iconTheme: const IconThemeData(color: Colors.white),
+            actions: [
+              // BOTÃO DE UPLOAD (Aparece se tiver permissão)
+              if (canEdit)
+                IconButton(
+                  icon: const Icon(Icons.cloud_upload),
+                  tooltip: "Upload JSON",
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text("Upload de Hinos"),
+                        content: const Text(
+                          "Isso vai ler o arquivo 'hinos.json' local e atualizar o banco de dados online.\n\nDeseja continuar?",
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text("Cancelar"),
                           ),
-                        ),
-                        title: Text(
-                          hino['titulo'],
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  HymnDetailScreen(hino: hino),
-                            ),
-                          );
-                        },
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _uploadHinosDoJsonParaFirebase();
+                            },
+                            child: const Text("ENVIAR AGORA"),
+                          ),
+                        ],
                       ),
                     );
                   },
-                );
-              },
-            ),
+                ),
+            ],
           ),
-        ],
-      ),
+          body: Column(
+            children: [
+              // BARRA DE PESQUISA
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: TextField(
+                  onChanged: (value) {
+                    setState(() {
+                      _searchText = value.toLowerCase();
+                    });
+                  },
+                  decoration: InputDecoration(
+                    labelText: 'Buscar hino (nome ou número)',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[100],
+                  ),
+                ),
+              ),
+
+              // LISTA DE HINOS (DO FIREBASE)
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('hinos')
+                      .orderBy('numero')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError)
+                      return const Center(child: Text("Erro ao carregar."));
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final data = snapshot.data!.docs;
+
+                    // Filtro local
+                    final filteredData = data.where((doc) {
+                      final hino = doc.data() as Map<String, dynamic>;
+                      final titulo = hino['titulo'].toString().toLowerCase();
+                      final numero = hino['numero'].toString();
+                      return titulo.contains(_searchText) ||
+                          numero.contains(_searchText);
+                    }).toList();
+
+                    if (filteredData.isEmpty)
+                      return const Center(child: Text("Nenhum hino encontrado."));
+
+                    return ListView.builder(
+                      itemCount: filteredData.length,
+                      itemBuilder: (context, index) {
+                        final doc = filteredData[index];
+                        final hino = doc.data() as Map<String, dynamic>;
+                        hino['id'] = doc.id; // Salva ID para edição
+
+                        return Card(
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Colors.orange[100],
+                              child: Text(
+                                "${hino['numero']}",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange[900],
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              hino['titulo'],
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      HymnDetailScreen(hino: hino),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      }
     );
   }
 }
@@ -304,9 +316,32 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 🔒 VERIFICAÇÃO CENTRALIZADA
-    final bool isAdmin = AdminConfig.isUserAdmin();
+    final user = FirebaseAuth.instance.currentUser;
 
+    // Se não estiver logado, mostra apenas a tela sem botão de edição
+    if (user == null) {
+      return _buildScreenContent(false);
+    }
+
+    // STREAM PARA VERIFICAR PERMISSÃO NA TELA DE DETALHES TAMBÉM
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        bool canEdit = false;
+        if (snapshot.hasData && snapshot.data!.exists) {
+           final userData = snapshot.data!.data() as Map<String, dynamic>;
+           String role = userData['role'] ?? 'membro';
+           
+           // --- AQUI ESTÁ A MUDANÇA ---
+           canEdit = role == 'admin' || role == 'financeiro';
+        }
+
+        return _buildScreenContent(canEdit);
+      }
+    );
+  }
+
+  Widget _buildScreenContent(bool canEdit) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -316,8 +351,8 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
         backgroundColor: Colors.orange[800],
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          // EDITAR (Se for admin)
-          if (isAdmin)
+          // EDITAR (Se for admin ou financeiro)
+          if (canEdit)
             IconButton(icon: const Icon(Icons.edit), onPressed: _editHino),
         ],
       ),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-// 1. IMPORTANTE: Importar o pacote de localização
+import 'package:flutter/foundation.dart'; // Para identificar se é Web
 import 'package:flutter_localizations/flutter_localizations.dart'; 
 
 import 'src/screens/home_screen.dart';
@@ -9,7 +9,23 @@ import 'src/screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+
+  if (kIsWeb) {
+    // --- CONFIGURAÇÃO WEB (COM SEUS DADOS REAIS) ---
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: "AIzaSyBWd0S5qU0XtqjaoQPHfDNkjKTjW9BXCqY",
+        appId: "1:1093422329001:web:47e10f268a6e1a4a57cdb8",
+        messagingSenderId: "1093422329001",
+        projectId: "iec-app-1c3ac",
+        storageBucket: "iec-app-1c3ac.firebasestorage.app",
+      ),
+    );
+  } else {
+    // --- CONFIGURAÇÃO ANDROID (AUTOMÁTICA) ---
+    await Firebase.initializeApp();
+  }
+
   runApp(const MyApp());
 }
 
@@ -22,17 +38,15 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'IEC App',
 
-      // 2. CONFIGURAÇÃO DE IDIOMA (PT-BR)
-      // Isso diz ao app para traduzir os calendários e relógios
+      // Configuração de Idioma (PT-BR)
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('pt', 'BR'), // Define Português do Brasil como padrão
+        Locale('pt', 'BR'), 
       ],
-      // ---------------------------------------------------------
 
       theme: ThemeData(
         useMaterial3: true,
