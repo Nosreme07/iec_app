@@ -22,6 +22,9 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _isEditing = false;
+  
+  // NOVA VARIÁVEL DE CONSENTIMENTO
+  bool _autorizaCompartilhamento = false;
 
   // Variáveis da Imagem
   File? _imageFile;
@@ -89,6 +92,11 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
     if (data.containsKey('foto_url') && data['foto_url'] != null) {
       _existingImageUrl = data['foto_url'];
     }
+    
+    // Carrega o consentimento existente
+    if (data.containsKey('autoriza_compartilhamento')) {
+      _autorizaCompartilhamento = data['autoriza_compartilhamento'] ?? false;
+    }
 
     String? loadDrop(String key, List<String> options) {
       if (data[key] == null) return null;
@@ -153,6 +161,51 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
 
   Future<void> _saveMember() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // --- NOVA LÓGICA: PERGUNTA DE CONFIRMAÇÃO SE NÃO ESTIVER MARCADO ---
+    if (!_autorizaCompartilhamento) {
+      bool? confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.privacy_tip, color: Colors.indigo),
+              SizedBox(width: 10),
+              Expanded(child: Text("Autorização de Dados")),
+            ],
+          ),
+          content: const Text(
+            "O membro autoriza o compartilhamento dos seus dados pessoais (Nome, Telefone, Aniversário) para uso administrativo e comunicação da igreja?",
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx, false); // Não autoriza
+              },
+              child: const Text("NÃO", style: TextStyle(color: Colors.red)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _autorizaCompartilhamento = true;
+                });
+                Navigator.pop(ctx, true); // Autoriza
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
+              child: const Text("SIM, AUTORIZA", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      
+      // Se fechou o diálogo sem responder (null), cancela o salvamento
+      if (confirm == null) return;
+      
+      // Se respondeu NÃO (false), continua salvando como false
+      // Se respondeu SIM (true), a variável já foi atualizada acima
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -164,6 +217,7 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
       
       Map<String, dynamic> dadosParaSalvar = {
         'role': systemRole,
+        'autoriza_compartilhamento': _autorizaCompartilhamento, // SALVA NO BANCO
         'sexo': _selectedSexo?.toUpperCase(),
         'grupo_sanguineo': _selectedSangue?.toUpperCase(),
         'situacao': _selectedSituacao?.toUpperCase(),
@@ -368,12 +422,32 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
 
               if (!_isEditing) ...[
                 _buildSectionTitle("5. Segurança (Login)"),
-                // MUDANÇA: CAMPO DE SENHA APENAS NÚMEROS E MIN 6
                 _buildTextField('senha', "Senha Inicial (Apenas Números)", icon: Icons.vpn_key, required: true, isNumber: true),
               ],
 
               _buildSectionTitle("6. Observações"),
               _buildTextField('observacoes', "Observações Gerais", maxLines: 4),
+
+              const SizedBox(height: 20),
+              // --- CAMPO CHECKBOX DE AUTORIZAÇÃO (VISUAL) ---
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.indigo.withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(10),
+                  color: Colors.indigo.withOpacity(0.05)
+                ),
+                child: CheckboxListTile(
+                  title: const Text("Autoriza compartilhamento?", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                  subtitle: const Text("Permite o uso de dados para fins administrativos da igreja."),
+                  value: _autorizaCompartilhamento,
+                  activeColor: Colors.indigo,
+                  onChanged: (val) {
+                    setState(() {
+                      _autorizaCompartilhamento = val ?? false;
+                    });
+                  },
+                ),
+              ),
 
               const SizedBox(height: 30),
               SizedBox(
@@ -425,7 +499,6 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
         ),
         validator: required ? (value) {
           if (value == null || value.isEmpty) return "Campo obrigatório";
-          // MUDANÇA: VALIDAÇÃO DE SENHA (6 NÚMEROS)
           if (key == 'senha' && !_isEditing && value.length < 6) return "Mínimo 6 números";
           return null;
         } : null,

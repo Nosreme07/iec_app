@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart'; 
+import 'package:image_picker/image_picker.dart'; 
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-// Certifique-se de que este arquivo existe e tem a classe PdfGenerator
 import '../services/pdf_generator.dart'; 
 
 class FinanceScreen extends StatefulWidget {
@@ -15,12 +17,10 @@ class FinanceScreen extends StatefulWidget {
 
 class _FinanceScreenState extends State<FinanceScreen> {
   DateTime _mesAtual = DateTime.now();
-  
-  // Variáveis para controle de acesso
   String _userRole = ''; 
   bool _isLoadingRole = true;
 
-  // Controladores do Formulário
+  // Controladores
   final TextEditingController _nomeController = TextEditingController();
   final TextEditingController _descricaoController = TextEditingController();
   final TextEditingController _valorController = TextEditingController();
@@ -28,12 +28,13 @@ class _FinanceScreenState extends State<FinanceScreen> {
   String _tipoSelecionado = 'entrada';
   String _categoriaSelecionada = 'Dízimo';
   
+  // Variáveis para Imagem
+  File? _imageFile; 
+  String? _imageUrl; 
+  final ImagePicker _picker = ImagePicker();
+
   final List<String> _categoriasEntrada = ['Dízimo', 'Oferta', 'EBD', 'Outros'];
-  
-  final List<String> _categoriasSaida = ['Prebenda Pastoral','INSS Pastor', 'FGTM', 'Ajuda de Custo Zeladoria',
-  'INSS Zeladoria', 'FGTS Zeladoria', 'Neoenergia (igreja)', 'Neoenergia (comunidade)', 'Compesa', 
-  'Internet', 'GFIP', 'Material de Limpeza', 'Descartáveis', 'Ítens da Sta Ceia', 'Ofertas Missionárias','Assistência Social',
-  'Papelaria', 'Man. do Templo', 'Man. do Som','UIECB','KOINONIA', 'Outros'];
+  final List<String> _categoriasSaida = ['Prebenda Pastoral','INSS Pastor', 'FGTM', 'Ajuda de Custo Zeladoria', 'INSS Zeladoria', 'FGTS Zeladoria', 'Neoenergia (igreja)', 'Neoenergia (comunidade)', 'Compesa', 'Internet', 'GFIP', 'Material de Limpeza', 'Descartáveis', 'Ítens da Sta Ceia', 'Ofertas Missionárias','Assistência Social', 'Papelaria', 'Man. do Templo', 'Man. do Som','UIECB','KOINONIA', 'Outros'];
 
   bool _isSaving = false;
 
@@ -44,21 +45,19 @@ class _FinanceScreenState extends State<FinanceScreen> {
     _checkUserRole();
   }
 
-  // --- BUSCA A FUNÇÃO DO USUÁRIO NO BANCO ---
   Future<void> _checkUserRole() async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
         DocumentSnapshot doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        if (doc.exists) {
+        if (doc.exists && mounted) {
           setState(() {
             _userRole = doc.get('role') ?? 'membro';
             _isLoadingRole = false;
           });
         }
       } catch (e) {
-        print("Erro ao verificar permissão: $e");
-        setState(() => _isLoadingRole = false);
+        if(mounted) setState(() => _isLoadingRole = false);
       }
     }
   }
@@ -71,132 +70,90 @@ class _FinanceScreenState extends State<FinanceScreen> {
     super.dispose();
   }
 
-  // --- LÓGICA DE DATAS ---
+  // --- DATAS ---
   void _trocarMes(int meses) {
     setState(() {
       _mesAtual = DateTime(_mesAtual.year, _mesAtual.month + meses, 1);
     });
   }
-
   DateTime _getInicioMes() => DateTime(_mesAtual.year, _mesAtual.month, 1);
   DateTime _getFimMes() => DateTime(_mesAtual.year, _mesAtual.month + 1, 0, 23, 59, 59);
 
-  // --- 1. FUNÇÃO DE EXPORTAR PDF (APENAS FINANCEIRO) ---
-  Future<void> _gerarPdfMensal() async {
-    // Mostra indicador de carregamento
-    showDialog(
-      context: context, 
-      barrierDismissible: false, 
-      builder: (c) => const Center(child: CircularProgressIndicator())
-    );
-
-    try {
-      // Busca os dados do mês atual para o PDF
-      var snapshot = await FirebaseFirestore.instance
-          .collection('financas')
-          .where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(_getInicioMes()))
-          .where('data', isLessThanOrEqualTo: Timestamp.fromDate(_getFimMes()))
-          .orderBy('data', descending: false) // Ordem cronológica para o relatório
-          .get();
-
-      // Fecha o loading
-      if (mounted) Navigator.pop(context); 
-
-      if (snapshot.docs.isEmpty) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sem dados neste mês para gerar PDF.")));
-        return;
-      }
-
-      // --- CHAMADA REAL AO GERADOR DE PDF ---
-      await PdfGenerator.generateFinanceReport(_mesAtual, snapshot.docs);
-
-    } catch (e) {
-      // Garante que o loading feche em caso de erro
-      if (mounted && Navigator.canPop(context)) {
-         Navigator.pop(context);
-      }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao gerar PDF: $e")));
-    }
-  }
-
-  // --- 2. FUNÇÃO DE RESUMO ANUAL (ADMIN E FINANCEIRO) ---
-  Future<void> _mostrarRelatorioAnual() async {
-    int ano = _mesAtual.year;
-    DateTime inicioAno = DateTime(ano, 1, 1);
-    DateTime fimAno = DateTime(ano, 12, 31, 23, 59, 59);
-
-    showDialog(
-      context: context, 
-      barrierDismissible: false,
-      builder: (c) => const Center(child: CircularProgressIndicator())
-    );
-
-    try {
-      var snapshot = await FirebaseFirestore.instance
-          .collection('financas')
-          .where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(inicioAno))
-          .where('data', isLessThanOrEqualTo: Timestamp.fromDate(fimAno))
-          .get();
-
-      double totalEntrada = 0;
-      double totalSaida = 0;
-
-      for (var doc in snapshot.docs) {
-        double valor = (doc['valor'] ?? 0).toDouble();
-        if (doc['tipo'] == 'entrada') {
-          totalEntrada += valor;
-        } else {
-          totalSaida += valor;
-        }
-      }
-      double saldo = totalEntrada - totalSaida;
-
-      if (mounted) Navigator.pop(context); // Fecha loading
-
-      // MOSTRA O RESULTADO
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Column(
-              children: [
-                const Text("Resumo Anual", style: TextStyle(fontWeight: FontWeight.bold)),
-                Text("$ano", style: const TextStyle(fontSize: 14, color: Colors.grey)),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildInfoColumn("Total Entradas", totalEntrada, Colors.green),
-                const Divider(),
-                _buildInfoColumn("Total Saídas", totalSaida, Colors.red),
-                const Divider(),
-                _buildInfoColumn("Saldo Anual", saldo, saldo >= 0 ? Colors.blue[800]! : Colors.red[800]!),
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Fechar")),
-            ],
+  // --- SELEÇÃO DE IMAGEM OTIMIZADA (BAIXA QUALIDADE) ---
+  Future<void> _pickImage(StateSetter setStateDialog) async {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Wrap(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.camera_alt),
+            title: const Text('Tirar Foto'),
+            onTap: () async {
+              Navigator.pop(context);
+              final XFile? photo = await _picker.pickImage(
+                source: ImageSource.camera,
+                imageQuality: 25, // Qualidade baixa (0-100) para economizar espaço
+                maxWidth: 800,    // Redimensiona a largura máxima
+                maxHeight: 800,   // Redimensiona a altura máxima
+              );
+              if (photo != null) {
+                setStateDialog(() => _imageFile = File(photo.path));
+              }
+            },
           ),
-        );
-      }
+          ListTile(
+            leading: const Icon(Icons.photo_library),
+            title: const Text('Galeria'),
+            onTap: () async {
+              Navigator.pop(context);
+              final XFile? image = await _picker.pickImage(
+                source: ImageSource.gallery,
+                imageQuality: 25, // Qualidade baixa
+                maxWidth: 800,    // Redimensiona
+                maxHeight: 800,
+              );
+              if (image != null) {
+                setStateDialog(() => _imageFile = File(image.path));
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
+  // --- UPLOAD DE IMAGEM ---
+  Future<String?> _uploadImage() async {
+    if (_imageFile == null) return _imageUrl; 
+
+    try {
+      String fileName = DateTime.now().millisecondsSinceEpoch.toString();
+      // Salva na pasta 'comprovantes'
+      Reference ref = FirebaseStorage.instance.ref().child('comprovantes/$fileName.jpg');
+      
+      // Upload do arquivo
+      UploadTask uploadTask = ref.putFile(_imageFile!);
+      TaskSnapshot snapshot = await uploadTask;
+      return await snapshot.ref.getDownloadURL();
     } catch (e) {
-      if (mounted) Navigator.pop(context);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao calcular anual: $e")));
+      print("Erro no upload: $e");
+      return null;
     }
   }
 
-  // --- LÓGICA DE CRUD ---
+  // --- SALVAR ---
   Future<void> _salvarTransacao({String? docId}) async {
     if (_valorController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O valor é obrigatório.")));
       return;
     }
 
-    setState(() => _isSaving = true);
+    setState(() => _isSaving = true); 
 
     try {
+      // 1. Upload da Imagem (se houver nova)
+      String? downloadUrl = await _uploadImage();
+
       String valorRaw = _valorController.text.replaceAll('.', '').replaceAll(',', '.');
       double valor = double.tryParse(valorRaw) ?? 0.0;
 
@@ -208,6 +165,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
         'valor': valor,
         'data': Timestamp.fromDate(DateTime.now()), 
         'mes_referencia': Timestamp.fromDate(_mesAtual),
+        'comprovante_url': downloadUrl, 
       };
 
       if (docId == null) {
@@ -217,7 +175,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
       }
 
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context); 
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lançamento salvo!"), backgroundColor: Colors.green));
       }
     } catch (e) {
@@ -227,7 +185,8 @@ class _FinanceScreenState extends State<FinanceScreen> {
     }
   }
 
-  Future<void> _excluirTransacao(String docId) async {
+  // --- EXCLUIR ---
+  Future<void> _excluirTransacao(String docId, String? imageUrl) async {
     bool confirm = await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -241,24 +200,52 @@ class _FinanceScreenState extends State<FinanceScreen> {
     ) ?? false;
 
     if (confirm) {
+      // Tenta deletar a imagem do Storage se existir
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        try {
+          await FirebaseStorage.instance.refFromURL(imageUrl).delete();
+        } catch (e) {
+          print("Erro ao deletar imagem antiga (pode já ter sido apagada): $e");
+        }
+      }
       await FirebaseFirestore.instance.collection('financas').doc(docId).delete();
     }
   }
 
+  // --- VISUALIZAR COMPROVANTE ---
+  void _verComprovante(String url) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InteractiveViewer(child: Image.network(url)),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Fechar"))
+          ],
+        ),
+      ),
+    );
+  }
+
   // --- FORMULÁRIO ---
   void _showFormDialog({String? docId, Map<String, dynamic>? data}) {
+    _imageFile = null; // Reseta imagem local
+    
     if (data != null) {
       _tipoSelecionado = data['tipo'];
       _categoriaSelecionada = data['categoria'];
       _nomeController.text = data['nome'] ?? '';
       _descricaoController.text = data['descricao'] ?? '';
       _valorController.text = (data['valor'] as double).toStringAsFixed(2).replaceAll('.', ',');
+      _imageUrl = data['comprovante_url'];
     } else {
       _tipoSelecionado = 'entrada';
       _categoriaSelecionada = 'Dízimo';
       _nomeController.clear();
       _descricaoController.clear();
       _valorController.clear();
+      _imageUrl = null;
     }
 
     showDialog(
@@ -278,7 +265,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // SELETOR DE TIPO
+                    // TIPO
                     Row(
                       children: [
                         Expanded(
@@ -324,7 +311,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                     ),
                     const SizedBox(height: 15),
 
-                    // CAMPO NOME
+                    // CAMPOS
                     TextField(
                       controller: _nomeController,
                       decoration: const InputDecoration(
@@ -335,11 +322,9 @@ class _FinanceScreenState extends State<FinanceScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // VALOR
                     TextField(
                       controller: _valorController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      // AQUI FOI REMOVIDO O 'const' QUE CAUSAVA O ERRO
                       decoration: const InputDecoration(
                         labelText: "Valor (R\$)", 
                         hintText: "0,00", 
@@ -349,22 +334,63 @@ class _FinanceScreenState extends State<FinanceScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // CATEGORIA
                     DropdownButtonFormField<String>(
                       value: _categoriaSelecionada,
-                      // AQUI TAMBÉM REMOVIDO O 'const'
                       decoration: const InputDecoration(labelText: "Categoria", border: OutlineInputBorder()),
                       items: categoriasAtuais.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                       onChanged: (val) => setStateDialog(() => _categoriaSelecionada = val!),
                     ),
                     const SizedBox(height: 12),
 
-                    // DESCRIÇÃO
                     TextField(
                       controller: _descricaoController,
-                      // AQUI TAMBÉM REMOVIDO O 'const'
                       decoration: const InputDecoration(labelText: "Observação / Detalhes", border: OutlineInputBorder()),
                     ),
+                    const SizedBox(height: 20),
+
+                    // --- CAMPO DE ANEXAR COMPROVANTE ---
+                    GestureDetector(
+                      onTap: () => _pickImage(setStateDialog),
+                      child: Container(
+                        width: double.infinity,
+                        height: 150,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          border: Border.all(color: Colors.grey[400]!),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: _imageFile != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.file(_imageFile!, fit: BoxFit.cover),
+                            )
+                          : (_imageUrl != null && _imageUrl!.isNotEmpty)
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Image.network(_imageUrl!, fit: BoxFit.cover),
+                                )
+                              : Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(Icons.camera_alt, size: 40, color: Colors.grey),
+                                    SizedBox(height: 8),
+                                    Text("Anexar Comprovante", style: TextStyle(color: Colors.grey)),
+                                    Text("(Qualidade Otimizada)", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                                  ],
+                                ),
+                      ),
+                    ),
+                    if (_imageFile != null || (_imageUrl != null && _imageUrl!.isNotEmpty))
+                      TextButton.icon(
+                        onPressed: () {
+                          setStateDialog(() {
+                            _imageFile = null;
+                            _imageUrl = null;
+                          });
+                        },
+                        icon: const Icon(Icons.delete, color: Colors.red, size: 18),
+                        label: const Text("Remover Imagem", style: TextStyle(color: Colors.red)),
+                      )
                   ],
                 ),
               ),
@@ -388,261 +414,38 @@ class _FinanceScreenState extends State<FinanceScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoadingRole) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+  // --- PDF ---
+  Future<void> _gerarPdfMensal() async {
+     showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
+     try {
+       var snapshot = await FirebaseFirestore.instance.collection('financas').where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(_getInicioMes())).where('data', isLessThanOrEqualTo: Timestamp.fromDate(_getFimMes())).orderBy('data', descending: false).get();
+       if(mounted) Navigator.pop(context);
+       if(snapshot.docs.isEmpty) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sem dados."))); return; }
+       await PdfGenerator.generateFinanceReport(_mesAtual, snapshot.docs);
+     } catch (e) { if(mounted) Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro PDF: $e"))); }
+  }
 
-    // Permissões
-    bool isFinanceiro = _userRole == 'financeiro';
-    bool isAdmin = _userRole == 'admin';
-
-    // Se não for nem admin nem financeiro, mostra acesso negado
-    if (!isFinanceiro && !isAdmin) {
-      return Scaffold(
-        appBar: AppBar(title: const Text("Financeiro"), backgroundColor: Colors.green[800]),
-        body: const Center(child: Text("Você não tem acesso a este módulo.", style: TextStyle(color: Colors.grey))),
-      );
-    }
-
-    String mesFormatado = DateFormat('MMMM yyyy', 'pt_BR').format(_mesAtual).toUpperCase();
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Financeiro", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.green[800],
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          // BOTÃO RESUMO ANUAL (ADMIN E FINANCEIRO)
-          if (isAdmin || isFinanceiro)
-            IconButton(
-              icon: const Icon(Icons.analytics_outlined),
-              tooltip: "Resumo Anual",
-              onPressed: _mostrarRelatorioAnual,
-            ),
-          
-          // BOTÃO EXPORTAR PDF (APENAS FINANCEIRO)
-          if (isFinanceiro)
-            IconButton(
-              icon: const Icon(Icons.picture_as_pdf),
-              tooltip: "Exportar PDF do Mês",
-              onPressed: _gerarPdfMensal,
-            ),
-            
-          const SizedBox(width: 10),
-        ],
-      ),
-      backgroundColor: Colors.grey[100],
-      body: Column(
-        children: [
-          // --- BARRA DE MÊS ---
-          Container(
-            color: Colors.green[800],
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white70), onPressed: () => _trocarMes(-1)),
-                    Text(mesFormatado, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                    IconButton(icon: const Icon(Icons.arrow_forward_ios, color: Colors.white70), onPressed: () => _trocarMes(1)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // --- CONTEÚDO (STREAM) ---
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('financas')
-                  .where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(_getInicioMes()))
-                  .where('data', isLessThanOrEqualTo: Timestamp.fromDate(_getFimMes()))
-                  .orderBy('data', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) return const Center(child: Text("Erro ao carregar dados."));
-                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-
-                final docs = snapshot.data!.docs;
-
-                // --- CÁLCULO GERAL (COMUM A TODOS) ---
-                double totalEntrada = 0;
-                double totalSaida = 0;
-                
-                // --- CÁLCULOS ESPECÍFICOS PARA O DASHBOARD DO ADMIN ---
-                double totalDizimo = 0;
-                double totalOferta = 0;
-                double totalEBD = 0;
-                double totalOutrasEntradas = 0;
-
-                for (var doc in docs) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  double valor = (data['valor'] ?? 0).toDouble();
-                  String cat = data['categoria'] ?? '';
-
-                  if (data['tipo'] == 'entrada') {
-                    totalEntrada += valor;
-                    if (cat == 'Dízimo') totalDizimo += valor;
-                    else if (cat == 'Oferta') totalOferta += valor;
-                    else if (cat == 'EBD') totalEBD += valor;
-                    else totalOutrasEntradas += valor;
-                  } else {
-                    totalSaida += valor;
-                  }
-                }
-                double saldo = totalEntrada - totalSaida;
-
-                // ---------------------------------------------
-                // VISÃO DE ADMINISTRADOR (DASHBOARD RESUMIDO)
-                // ---------------------------------------------
-                if (isAdmin) {
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                         // CARD DE SALDO GERAL
-                        _buildSaldoCard(totalEntrada, totalSaida, saldo),
-                        const SizedBox(height: 20),
-                        
-                        const Text("Detalhamento de Entradas", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        const SizedBox(height: 10),
-                        
-                        // GRID DE ENTRADAS
-                        GridView.count(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          childAspectRatio: 1.5,
-                          children: [
-                            _buildDashCard("Dízimos", totalDizimo, Colors.green),
-                            _buildDashCard("Ofertas", totalOferta, Colors.lightGreen),
-                            _buildDashCard("EBD", totalEBD, Colors.teal),
-                            _buildDashCard("Outros", totalOutrasEntradas, Colors.blueGrey),
-                          ],
-                        ),
-
-                        const SizedBox(height: 20),
-                        const Text("Resumo de Saídas", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        const SizedBox(height: 10),
-                         _buildDashCard("Total de Despesas", totalSaida, Colors.red, isWide: true),
-                      ],
-                    ),
-                  );
-                }
-
-                // ---------------------------------------------
-                // VISÃO DO FINANCEIRO (COMPLETA COM LISTA)
-                // ---------------------------------------------
-                return Column(
-                  children: [
-                    // CARD DE SALDO
-                    Transform.translate(
-                      offset: const Offset(0, -25),
-                      child: _buildSaldoCard(totalEntrada, totalSaida, saldo),
-                    ),
-
-                    // LISTA DE LANÇAMENTOS
-                    Expanded(
-                      child: docs.isEmpty 
-                        ? const Center(child: Text("Nenhum lançamento neste mês.", style: TextStyle(color: Colors.grey)))
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            itemCount: docs.length,
-                            itemBuilder: (context, index) {
-                              final data = docs[index].data() as Map<String, dynamic>;
-                              final id = docs[index].id;
-                              
-                              bool isEntrada = data['tipo'] == 'entrada';
-                              double valor = (data['valor'] ?? 0).toDouble();
-                              String categoria = data['categoria'] ?? "";
-                              String nome = data['nome'] ?? "";
-                              String descricao = data['descricao'] ?? "";
-                              DateTime dataTransacao = (data['data'] as Timestamp).toDate();
-                              String dia = DateFormat('dd/MM').format(dataTransacao);
-
-                              String subtitulo = "$dia";
-                              if (nome.isNotEmpty) subtitulo += " - $nome";
-                              if (descricao.isNotEmpty) subtitulo += " ($descricao)";
-
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: isEntrada ? Colors.green[50] : Colors.red[50],
-                                    child: Icon(
-                                      isEntrada ? Icons.arrow_upward : Icons.arrow_downward, 
-                                      color: isEntrada ? Colors.green : Colors.red,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  title: Text(categoria, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  subtitle: Text(subtitulo, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        isEntrada ? "+ ${NumberFormat.simpleCurrency(locale: 'pt_BR').format(valor)}" 
-                                                  : "- ${NumberFormat.simpleCurrency(locale: 'pt_BR').format(valor)}",
-                                        style: TextStyle(
-                                          color: isEntrada ? Colors.green[700] : Colors.red[700],
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      PopupMenuButton<String>(
-                                        padding: EdgeInsets.zero,
-                                        icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
-                                        onSelected: (v) {
-                                          if (v == 'edit') _showFormDialog(docId: id, data: data);
-                                          if (v == 'delete') _excluirTransacao(id);
-                                        },
-                                        itemBuilder: (ctx) => [
-                                          const PopupMenuItem(value: 'edit', child: Text("Editar")),
-                                          const PopupMenuItem(value: 'delete', child: Text("Excluir", style: TextStyle(color: Colors.red))),
-                                        ],
-                                      )
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-      // Botão Flutuante (Apenas para Financeiro)
-      floatingActionButton: (isFinanceiro) 
-        ? FloatingActionButton(
-            backgroundColor: Colors.green[800],
-            onPressed: () => _showFormDialog(),
-            child: const Icon(Icons.add, color: Colors.white),
-          )
-        : null,
-    );
+  // --- RELATÓRIO ANUAL ---
+  Future<void> _mostrarRelatorioAnual() async {
+     int ano = _mesAtual.year;
+     DateTime inicio = DateTime(ano, 1, 1);
+     DateTime fim = DateTime(ano, 12, 31, 23, 59, 59);
+     showDialog(context: context, builder: (c) => const Center(child: CircularProgressIndicator()));
+     try {
+       var snap = await FirebaseFirestore.instance.collection('financas').where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(inicio)).where('data', isLessThanOrEqualTo: Timestamp.fromDate(fim)).get();
+       double ent = 0, sai = 0;
+       for(var doc in snap.docs) { if(doc['tipo']=='entrada') ent += (doc['valor']??0); else sai += (doc['valor']??0); }
+       if(mounted) Navigator.pop(context);
+       if(mounted) showDialog(context: context, builder: (ctx) => AlertDialog(title: Text("Resumo $ano"), content: Text("Entradas: $ent\nSaídas: $sai\nSaldo: ${ent-sai}"), actions: [TextButton(onPressed:()=>Navigator.pop(ctx), child: const Text("OK"))]));
+     } catch(e) { if(mounted) Navigator.pop(context); }
   }
 
   // --- WIDGETS AUXILIARES ---
-
   Widget _buildSaldoCard(double entrada, double saida, double saldo) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: const Offset(0, 5))],
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: const Offset(0, 5))]),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -656,39 +459,121 @@ class _FinanceScreenState extends State<FinanceScreen> {
   }
 
   Widget _buildInfoColumn(String label, double value, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-        const SizedBox(height: 4),
-        Text(
-          NumberFormat.simpleCurrency(locale: 'pt_BR').format(value),
-          style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-      ],
-    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.center, children: [Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)), const SizedBox(height: 4), Text(NumberFormat.simpleCurrency(locale: 'pt_BR').format(value), style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14))]);
   }
 
   Widget _buildDashCard(String title, double value, Color color, {bool isWide = false}) {
     return Container(
-      width: isWide ? double.infinity : null,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+      width: isWide ? double.infinity : null, padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.3))),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold)), const SizedBox(height: 8), Text(NumberFormat.simpleCurrency(locale: 'pt_BR').format(value), style: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold))]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoadingRole) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    bool isFinanceiro = _userRole == 'financeiro';
+    bool isAdmin = _userRole == 'admin';
+    if (!isFinanceiro && !isAdmin) return Scaffold(appBar: AppBar(title: const Text("Financeiro"), backgroundColor: Colors.green[800]), body: const Center(child: Text("Sem acesso.")));
+
+    String mesFormatado = DateFormat('MMMM yyyy', 'pt_BR').format(_mesAtual).toUpperCase();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Financeiro", style: TextStyle(color: Colors.white)), backgroundColor: Colors.green[800], iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          if (isAdmin || isFinanceiro) IconButton(icon: const Icon(Icons.analytics_outlined), onPressed: _mostrarRelatorioAnual),
+          if (isFinanceiro) IconButton(icon: const Icon(Icons.picture_as_pdf), onPressed: _gerarPdfMensal),
+          const SizedBox(width: 10),
+        ],
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      backgroundColor: Colors.grey[100],
+      body: Column(
         children: [
-          Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(
-            NumberFormat.simpleCurrency(locale: 'pt_BR').format(value),
-            style: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold),
+          Container(
+            color: Colors.green[800], padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white70), onPressed: () => _trocarMes(-1)), Text(mesFormatado, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)), IconButton(icon: const Icon(Icons.arrow_forward_ios, color: Colors.white70), onPressed: () => _trocarMes(1))]),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('financas').where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(_getInicioMes())).where('data', isLessThanOrEqualTo: Timestamp.fromDate(_getFimMes())).orderBy('data', descending: true).snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) return const Center(child: Text("Erro ao carregar dados."));
+                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                final docs = snapshot.data!.docs;
+                
+                double totalEntrada = 0, totalSaida = 0, totalDizimo = 0, totalOferta = 0, totalEBD = 0, totalOutros = 0;
+                for (var doc in docs) {
+                  final d = doc.data() as Map<String, dynamic>;
+                  double v = (d['valor'] ?? 0).toDouble();
+                  if (d['tipo'] == 'entrada') {
+                    totalEntrada += v;
+                    if (d['categoria'] == 'Dízimo') totalDizimo += v; else if (d['categoria'] == 'Oferta') totalOferta += v; else if (d['categoria'] == 'EBD') totalEBD += v; else totalOutros += v;
+                  } else { totalSaida += v; }
+                }
+                double saldo = totalEntrada - totalSaida;
+
+                if (isAdmin) {
+                  return SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(children: [_buildSaldoCard(totalEntrada, totalSaida, saldo), const SizedBox(height: 20), GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), childAspectRatio: 1.5, crossAxisSpacing: 10, mainAxisSpacing: 10, children: [_buildDashCard("Dízimos", totalDizimo, Colors.green), _buildDashCard("Ofertas", totalOferta, Colors.lightGreen), _buildDashCard("EBD", totalEBD, Colors.teal), _buildDashCard("Outros", totalOutros, Colors.blueGrey)]), const SizedBox(height: 20), _buildDashCard("Total Saídas", totalSaida, Colors.red, isWide: true)]));
+                }
+
+                return Column(
+                  children: [
+                    Transform.translate(offset: const Offset(0, -25), child: _buildSaldoCard(totalEntrada, totalSaida, saldo)),
+                    Expanded(
+                      child: docs.isEmpty ? const Center(child: Text("Nenhum lançamento.")) : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 10), itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          final data = docs[index].data() as Map<String, dynamic>;
+                          final id = docs[index].id;
+                          bool isEntrada = data['tipo'] == 'entrada';
+                          bool temComprovante = data['comprovante_url'] != null && data['comprovante_url'].toString().isNotEmpty;
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            child: ListTile(
+                              leading: CircleAvatar(backgroundColor: isEntrada ? Colors.green[50] : Colors.red[50], child: Icon(isEntrada ? Icons.arrow_upward : Icons.arrow_downward, color: isEntrada ? Colors.green : Colors.red, size: 20)),
+                              title: Text(data['categoria']??"", style: const TextStyle(fontWeight: FontWeight.bold)),
+                              subtitle: Row(
+                                children: [
+                                  Text(DateFormat('dd/MM').format((data['data'] as Timestamp).toDate())),
+                                  if (data['nome'] != null) Text(" - ${data['nome']}"),
+                                  if (temComprovante) ...[const SizedBox(width: 5), const Icon(Icons.attach_file, size: 14, color: Colors.blue)]
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text((isEntrada ? "+ " : "- ") + NumberFormat.simpleCurrency(locale: 'pt_BR').format(data['valor']), style: TextStyle(color: isEntrada ? Colors.green[700] : Colors.red[700], fontWeight: FontWeight.bold)),
+                                  PopupMenuButton<String>(
+                                    icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
+                                    onSelected: (v) {
+                                      if (v == 'edit') _showFormDialog(docId: id, data: data);
+                                      if (v == 'delete') _excluirTransacao(id, data['comprovante_url']);
+                                      if (v == 'view' && temComprovante) _verComprovante(data['comprovante_url']);
+                                    },
+                                    itemBuilder: (ctx) => [
+                                      if (temComprovante) const PopupMenuItem(value: 'view', child: Text("Ver Comprovante")),
+                                      const PopupMenuItem(value: 'edit', child: Text("Editar")),
+                                      const PopupMenuItem(value: 'delete', child: Text("Excluir", style: TextStyle(color: Colors.red))),
+                                    ]
+                                  )
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
         ],
       ),
+      floatingActionButton: (isFinanceiro) ? FloatingActionButton(backgroundColor: Colors.green[800], onPressed: () => _showFormDialog(), child: const Icon(Icons.add, color: Colors.white)) : null,
     );
   }
 }

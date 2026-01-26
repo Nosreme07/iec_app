@@ -36,7 +36,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'IEC App',
+      title: 'IECM',
 
       // Configuração de Idioma (PT-BR)
       localizationsDelegates: const [

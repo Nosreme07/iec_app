@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Adicionado
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 class PatrimonioScreen extends StatefulWidget {
@@ -96,7 +96,7 @@ Código: $codigoSequencial""";
         dados['data_criacao'] = FieldValue.serverTimestamp();
         await FirebaseFirestore.instance.collection('tombamento').add(dados);
       } else {
-        await FirebaseFirestore.instance.collection('tombamento').doc(docId).update(dados);
+        await FirebaseFirestore.instance.collection('tombamento').doc(docId).set(dados, SetOptions(merge: true));
       }
 
       if (mounted) {
@@ -107,7 +107,7 @@ Código: $codigoSequencial""";
         ));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao salvar: $e"), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -132,7 +132,7 @@ Código: $codigoSequencial""";
     }
   }
 
-  // --- POPUP DE DETALHES (Recebe canManage) ---
+  // --- POPUP DE DETALHES ---
   void _showDetailsDialog(String docId, Map<String, dynamic> data, bool canManage) {
     String nome = data['nome'] ?? "Sem Nome";
     double qtd = (data['quantidade'] ?? 0).toDouble();
@@ -190,7 +190,6 @@ Código: $codigoSequencial""";
             ),
           ),
           actions: [
-            // BOTÕES DE ADMIN OU FINANCEIRO (EDITAR E EXCLUIR)
             if (canManage) ...[
               TextButton.icon(
                 icon: const Icon(Icons.delete, color: Colors.red, size: 20),
@@ -206,7 +205,6 @@ Código: $codigoSequencial""";
                 },
               ),
             ],
-            // BOTÃO FECHAR
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Fechar")),
           ],
         );
@@ -262,7 +260,6 @@ Código: $codigoSequencial""";
                       children: [
                         Expanded(child: TextField(controller: _quantidadeController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Qtd", border: OutlineInputBorder()))),
                         const SizedBox(width: 10),
-                        // DROPDOWN DE SITUAÇÃO
                         Expanded(
                           flex: 2,
                           child: DropdownButtonFormField<String>(
@@ -341,19 +338,18 @@ Código: $codigoSequencial""";
 
     if (user == null) return const Center(child: CircularProgressIndicator());
 
-    // 1. STREAM PARA VERIFICAR PERMISSÕES
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
-      builder: (context, userSnapshot) {
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+          builder: (context, userSnapshot) {
         
-        bool canManage = false;
-        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+          bool canManage = false;
+          if (userSnapshot.hasData && userSnapshot.data!.exists) {
            final userData = userSnapshot.data!.data() as Map<String, dynamic>;
            String role = userData['role'] ?? 'membro';
            
-           // --- AQUI ESTÁ A MUDANÇA: Admin OU Financeiro têm poder total ---
-           canManage = role == 'admin' || role == 'financeiro';
-        }
+           // --- ATUALIZADO: Incluindo 'administrativo' na permissão visual ---
+             canManage = role == 'admin' || role == 'financeiro' || role == 'administrativo';
+          }
 
         return Scaffold(
           appBar: AppBar(
@@ -363,7 +359,6 @@ Código: $codigoSequencial""";
           ),
           backgroundColor: Colors.grey[100],
           
-          // 2. STREAM DOS ITENS
           body: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('tombamento').orderBy('nome').snapshots(),
             builder: (context, snapshot) {
@@ -419,7 +414,6 @@ Código: $codigoSequencial""";
                             Text(observacoes, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                         ],
                       ),
-                      // Passa canManage para o popup
                       onTap: () => _showDetailsDialog(id, data, canManage),
                     ),
                   );

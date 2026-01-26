@@ -12,7 +12,8 @@ import 'patrimonio_screen.dart';
 import 'finance_screen.dart'; 
 
 import '../widgets/home_notices_widget.dart'; 
-import '../widgets/monthly_birthdays_widget.dart'; 
+import '../widgets/monthly_birthdays_widget.dart';
+import '../widgets/mural_avisos_widget.dart'; // Import the new widget here
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -40,7 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("IEC App", style: TextStyle(color: Colors.white)),
+        title: const Text("IEC-MORENO", style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.blue[900],
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
@@ -89,123 +90,129 @@ class HomeContent extends StatelessWidget {
         bool canViewFinance = role == 'admin' || role == 'financeiro';
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(vertical: 16), // Adjusted padding
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                "Bem-vindo à IEC-Moreno!",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  "Bem-vindo à IEC-Moreno!",
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
               ),
               const SizedBox(height: 20),
 
               // --- GRADE DE ÍCONES ---
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                // Layout de 3 colunas
-                crossAxisCount: 3,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                childAspectRatio: 0.85,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  // Layout de 3 colunas
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 0.85,
 
-                children: [
-                  // 1. BÍBLIA
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.menu_book,
-                    label: "Bíblia",
-                    color: Colors.brown,
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const BibleScreen()));
-                    },
-                  ),
-
-                  // 2. SALMOS E HINOS
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.library_music,
-                    label: "Salmos & Hinos",
-                    color: Colors.orange,
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()));
-                    },
-                  ),
-
-                  // 3. AGENDA SEMANAL
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.calendar_view_week,
-                    label: "Agenda Semanal",
-                    color: Colors.blue,
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const AgendaScreen()));
-                    },
-                  ),
-
-                  // 4. AGENDA ANUAL
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.calendar_month,
-                    label: "Agenda Anual",
-                    color: Colors.purple,
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const AnnualAgendaScreen()));
-                    },
-                  ),
-
-                  // 5. ESCALA
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.view_timeline,
-                    label: "Escala",
-                    color: Colors.teal,
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const ScaleScreen()));
-                    },
-                  ),
-
-                  // 6. PATRIMÔNIO
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.inventory_2,
-                    label: "Patrimônio",
-                    color: Colors.blueGrey,
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const PatrimonioScreen()));
-                    },
-                  ),
-
-                  // 7. MEMBROS
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.groups,
-                    label: "Membros",
-                    color: Colors.indigo,
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const MembersScreen()));
-                    },
-                  ),
-
-                  // 8. FINANÇAS (CONDICIONAL: ADMIN OU FINANCEIRO)
-                  if (canViewFinance)
+                  children: [
+                    // 1. BÍBLIA
                     _buildMenuCard(
                       context,
-                      icon: Icons.attach_money,
-                      label: "Finanças",
-                      color: Colors.green[700]!,
+                      icon: Icons.menu_book,
+                      label: "Bíblia",
+                      color: Colors.brown,
                       onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()));
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const BibleScreen()));
                       },
                     ),
-                ],
+
+                    // 2. SALMOS E HINOS
+                    _buildMenuCard(
+                      context,
+                      icon: Icons.library_music,
+                      label: "Salmos & Hinos",
+                      color: Colors.orange,
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()));
+                      },
+                    ),
+
+                    // 3. AGENDA SEMANAL
+                    _buildMenuCard(
+                      context,
+                      icon: Icons.calendar_view_week,
+                      label: "Agenda Semanal",
+                      color: Colors.blue,
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const AgendaScreen()));
+                      },
+                    ),
+
+                    // 4. AGENDA ANUAL
+                    _buildMenuCard(
+                      context,
+                      icon: Icons.calendar_month,
+                      label: "Agenda Anual",
+                      color: Colors.purple,
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const AnnualAgendaScreen()));
+                      },
+                    ),
+
+                    // 5. ESCALA
+                    _buildMenuCard(
+                      context,
+                      icon: Icons.view_timeline,
+                      label: "Escala",
+                      color: Colors.teal,
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const ScaleScreen()));
+                      },
+                    ),
+
+                    // 6. PATRIMÔNIO
+                    _buildMenuCard(
+                      context,
+                      icon: Icons.inventory_2,
+                      label: "Patrimônio",
+                      color: Colors.blueGrey,
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const PatrimonioScreen()));
+                      },
+                    ),
+
+                    // 7. MEMBROS
+                    _buildMenuCard(
+                      context,
+                      icon: Icons.groups,
+                      label: "Membros",
+                      color: Colors.indigo,
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const MembersScreen()));
+                      },
+                    ),
+
+                    // 8. FINANÇAS (CONDICIONAL: ADMIN OU FINANCEIRO)
+                    if (canViewFinance)
+                      _buildMenuCard(
+                        context,
+                        icon: Icons.attach_money,
+                        label: "Finanças",
+                        color: Colors.green[700]!,
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()));
+                        },
+                      ),
+                  ],
+                ),
               ),
 
               const SizedBox(height: 30),
 
               // --- 1. AVISOS DA SEMANA (LETREIRO) ---
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4.0),
+                padding: EdgeInsets.symmetric(horizontal: 20.0), // Consistent padding with title
                 child: Text(
                   "Avisos da Semana",
                   style: TextStyle(
@@ -217,7 +224,10 @@ class HomeContent extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               
-              // Carrossel dinâmico
+              // --- NOVO WIDGET DE MURAL DE AVISOS (TEXTO) ---
+              const MuralAvisosWidget(), 
+
+              // --- CARROSSEL DE EVENTOS ---
               const WeeklyNoticesWidget(),
 
               const SizedBox(height: 20),

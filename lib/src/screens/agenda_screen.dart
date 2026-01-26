@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'add_event_screen.dart';
+import 'add_event_screen.dart'; // Certifique-se que este arquivo existe no seu projeto
 
 class AgendaScreen extends StatefulWidget {
   const AgendaScreen({super.key});
@@ -42,17 +42,25 @@ class _AgendaScreenState extends State<AgendaScreen> {
   }
 
   void _calcularInicioSemana() {
+    // Ajusta para pegar sempre a segunda-feira ou domingo anterior como inicio
     _inicioDaSemana = _dataFocada.subtract(Duration(days: _dataFocada.weekday - 1));
+    // Remove horas/minutos para garantir comparação de datas limpa
     _inicioDaSemana = DateTime(_inicioDaSemana.year, _inicioDaSemana.month, _inicioDaSemana.day);
   }
 
   String _getSemanaId() {
+    // Cria um ID único para a semana, ex: "2023-10-23"
     return DateFormat('yyyy-MM-dd').format(_inicioDaSemana);
   }
 
   Future<void> _carregarPrioridades() async {
     String semanaId = _getSemanaId();
-    _prioridadesController.text = "";
+    // Limpa o campo enquanto carrega ou se não houver dados
+    if (mounted) {
+       setState(() {
+         // Opcional: _prioridadesController.text = "Carregando..."; 
+       });
+    }
 
     try {
       var doc = await FirebaseFirestore.instance.collection('agenda_avisos').doc(semanaId).get();
@@ -60,26 +68,36 @@ class _AgendaScreenState extends State<AgendaScreen> {
         setState(() {
           _prioridadesController.text = doc['texto'] ?? "";
         });
+      } else {
+        if (mounted) setState(() => _prioridadesController.text = "");
       }
     } catch (e) {
       print("Erro ao carregar prioridades: $e");
     }
   }
 
+  // --- FUNÇÃO DE SALVAR CORRIGIDA ---
   Future<void> _salvarPrioridades() async {
     setState(() => _isSavingPrioridades = true);
+    
     try {
       String semanaId = _getSemanaId();
+      
+      // Correção: Usar SetOptions(merge: true) para evitar sobrescrever dados
       await FirebaseFirestore.instance.collection('agenda_avisos').doc(semanaId).set({
         'texto': _prioridadesController.text,
         'ultima_atualizacao': FieldValue.serverTimestamp(),
-      });
+        'autor_uid': FirebaseAuth.instance.currentUser?.uid, // Útil para segurança
+      }, SetOptions(merge: true));
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avisos salvos!"), backgroundColor: Colors.green));
-        FocusScope.of(context).unfocus();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avisos salvos com sucesso!"), backgroundColor: Colors.green));
+        FocusScope.of(context).unfocus(); // Fecha o teclado
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro ao salvar."), backgroundColor: Colors.red));
+      // Exibe o erro no console e na tela
+      print("ERRO DETALHADO AO SALVAR: $e"); 
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao salvar: $e"), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isSavingPrioridades = false);
     }
@@ -115,10 +133,11 @@ class _AgendaScreenState extends State<AgendaScreen> {
   }
 
   // --- POPUP COM DETALHES ---
-  // Agora recebe 'canManage' em vez de apenas 'isAdmin'
   void _showEventDetails(String id, Map<String, dynamic> data, bool canManage) {
     
-    String hora = DateFormat('HH:mm').format((data['data_hora'] as Timestamp).toDate());
+    Timestamp? ts = data['data_hora'] as Timestamp?;
+    String hora = ts != null ? DateFormat('HH:mm').format(ts.toDate()) : "--:--";
+    
     String titulo = data['titulo'] ?? data['tipo'] ?? "Evento";
     String local = data['local'] ?? "Igreja";
     String dirigente = data['dirigente'] ?? "Não informado";
@@ -158,7 +177,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
             ),
           ),
           actions: [
-            // BOTÕES DE AÇÃO (SÓ SE TIVER PERMISSÃO)
             if (canManage) ...[
               TextButton.icon(
                 icon: const Icon(Icons.delete, color: Colors.red, size: 20),
@@ -177,7 +195,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 },
               ),
             ],
-            // BOTÃO FECHAR (PARA TODOS)
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text("Fechar"),
@@ -215,7 +232,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
     if (user == null) return const Center(child: CircularProgressIndicator());
 
-    // 1. STREAM PRINCIPAL: Verifica permissões
+    // 1. STREAM PRINCIPAL: Verifica permissões e monta a tela
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
       builder: (context, userSnapshot) {
@@ -224,8 +241,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
         if (userSnapshot.hasData && userSnapshot.data!.exists) {
            final userData = userSnapshot.data!.data() as Map<String, dynamic>;
            String role = userData['role'] ?? 'membro';
-           
-           // --- MUDANÇA: ADMIN OU FINANCEIRO PODEM GERENCIAR A AGENDA ---
            canManage = role == 'admin' || role == 'financeiro';
         }
 
@@ -256,7 +271,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
           ),
           backgroundColor: Colors.grey[100],
           
-          // 2. STREAM DA AGENDA
           body: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('agenda')
@@ -277,14 +291,13 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   crossAxisSpacing: 10,
                   mainAxisSpacing: 10,
                 ),
-                itemCount: 8,
+                itemCount: 8, // 7 dias + 1 card de avisos
                 itemBuilder: (context, index) {
                   if (index < 7) {
                     DateTime dayDate = _inicioDaSemana.add(Duration(days: index));
-                    // Passamos canManage para o card
                     return _buildDayCard(dayDate, allDocs, canManage);
                   } else {
-                    // Passamos canManage para o card de avisos
+                    // O último card é o de Avisos/Prioridades
                     return _buildPriorityCard(canManage);
                   }
                 },
@@ -301,12 +314,15 @@ class _AgendaScreenState extends State<AgendaScreen> {
     String diaMes = DateFormat('dd/MM').format(dayDate);
     bool isToday = dayDate.day == DateTime.now().day && dayDate.month == DateTime.now().month && dayDate.year == DateTime.now().year;
 
+    // Filtra eventos deste dia específico
     List<QueryDocumentSnapshot> dayEvents = allDocs.where((doc) {
-      Timestamp ts = doc['data_hora'];
+      Timestamp? ts = doc['data_hora'] as Timestamp?;
+      if (ts == null) return false;
       DateTime dt = ts.toDate();
       return dt.year == dayDate.year && dt.month == dayDate.month && dt.day == dayDate.day;
     }).toList();
 
+    // Ordena por horário
     dayEvents.sort((a, b) => a['data_hora'].compareTo(b['data_hora']));
 
     return Container(
@@ -336,7 +352,10 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   itemCount: dayEvents.length,
                   itemBuilder: (ctx, i) {
                     final data = dayEvents[i].data() as Map<String, dynamic>;
-                    String hora = DateFormat('HH:mm').format((data['data_hora'] as Timestamp).toDate());
+                    
+                    Timestamp? ts = data['data_hora'] as Timestamp?;
+                    String hora = ts != null ? DateFormat('HH:mm').format(ts.toDate()) : "--:--";
+                    
                     String evento = data['tipo'] ?? (data['titulo'] ?? "Evento");
                     String local = data['local'] ?? "";
                     String dirigente = data['dirigente'] ?? "";
@@ -344,7 +363,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     final colors = _eventColors[i % _eventColors.length];
 
                     return InkWell(
-                      // Passa canManage para o popup
                       onTap: () => _showEventDetails(dayEvents[i].id, data, canManage),
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
@@ -375,7 +393,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 ),
           ),
 
-          // BOTÃO ADICIONAR (SÓ SE TIVER PERMISSÃO)
           if (canManage)
             InkWell(
               onTap: () => _addEvent(dayDate),
@@ -432,8 +449,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(8.0),
-              // SE FOR GESTOR: TextField Editável
-              // SE NÃO: Texto simples (read-only)
               child: canManage 
                 ? TextField( 
                     controller: _prioridadesController,

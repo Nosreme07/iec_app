@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart'; 
 import 'admin_register_screen.dart'; 
 
 class MembersScreen extends StatefulWidget {
@@ -13,6 +14,7 @@ class MembersScreen extends StatefulWidget {
 class _MembersScreenState extends State<MembersScreen> {
   String _searchText = "";
 
+  // --- FUNÇÕES UTILITÁRIAS ---
   void _editMember(String docId, Map<String, dynamic> data) {
     Navigator.push(context, MaterialPageRoute(builder: (context) => AdminRegisterScreen(memberId: docId, memberData: data)));
   }
@@ -26,6 +28,53 @@ class _MembersScreenState extends State<MembersScreen> {
     if (confirm) await FirebaseFirestore.instance.collection('users').doc(docId).delete();
   }
 
+  Future<void> _openWhatsApp(String phone, {String? message}) async {
+    String cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), ''); 
+    if (cleanPhone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Número de WhatsApp não cadastrado.")));
+      return;
+    }
+    if (!cleanPhone.startsWith('55')) cleanPhone = '55$cleanPhone'; 
+    
+    String urlString = "https://wa.me/$cleanPhone";
+    if (message != null && message.isNotEmpty) {
+      urlString += "?text=${Uri.encodeComponent(message)}";
+    }
+
+    final Uri url = Uri.parse(urlString);
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Não foi possível abrir o WhatsApp")));
+    }
+  }
+
+  Future<void> _makeCall(String phone) async {
+    String cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanPhone.isEmpty) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Telefone não cadastrado.")));
+       return;
+    }
+    final Uri url = Uri.parse("tel:$cleanPhone");
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    }
+  }
+
+  bool _isBirthdayMonth(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return false;
+    try {
+      List<String> parts = dateStr.split('/');
+      if (parts.length >= 2) {
+        int month = int.parse(parts[1]);
+        return month == DateTime.now().month;
+      }
+    } catch (e) {
+      return false;
+    }
+    return false;
+  }
+
   // --- POPUP DE DETALHES ---
   void _showMemberDetails(Map<String, dynamic> data, bool canManage) {
     String get(String key) => (data[key] ?? "").toString();
@@ -33,8 +82,9 @@ class _MembersScreenState extends State<MembersScreen> {
     if (nomeDisplay.isEmpty) nomeDisplay = get('nome'); 
     String? fotoUrl = data['foto_url'];
     String role = get('role');
+    String whatsapp = get('whatsapp');
+    String telefone = get('telefone');
 
-    // Configuração visual do Header do Popup
     Color headerColor = Colors.indigo;
     String labelRole = "";
     
@@ -52,6 +102,7 @@ class _MembersScreenState extends State<MembersScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return Container(
           height: MediaQuery.of(context).size.height * 0.85,
@@ -59,17 +110,36 @@ class _MembersScreenState extends State<MembersScreen> {
           decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
           child: Column(
             children: [
-              // FOTO E CABEÇALHO
-              CircleAvatar(
-                radius: 50,
-                backgroundColor: headerColor.withOpacity(0.2),
-                backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
-                child: fotoUrl == null ? Icon(Icons.person, size: 60, color: headerColor) : null,
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 20),
+
+              Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: headerColor.withOpacity(0.2),
+                    backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
+                    child: fotoUrl == null ? Icon(Icons.person, size: 60, color: headerColor) : null,
+                  ),
+                  if (_isBirthdayMonth(get('nascimento')))
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: GestureDetector(
+                        onTap: () => _openWhatsApp(whatsapp, message: "Paz do Senhor, $nomeDisplay! Feliz aniversário! Que Deus continue te abençoando grandemente! 🎉🙏"),
+                        child: const CircleAvatar(
+                          radius: 18,
+                          backgroundColor: Colors.white,
+                          child: Text("🎂", style: TextStyle(fontSize: 20)),
+                        ),
+                      ),
+                    )
+                ],
               ),
               const SizedBox(height: 10),
               Text(nomeDisplay, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
               
-              // ETIQUETA DE CARGO NO DETALHE
               if (labelRole.isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(top: 5), 
@@ -78,34 +148,68 @@ class _MembersScreenState extends State<MembersScreen> {
                   child: Text(labelRole, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: headerColor))
                 ),
 
-              Divider(height: 30, color: Colors.indigo[100]),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (whatsapp.isNotEmpty)
+                      _actionButton(Icons.chat, "WhatsApp", Colors.green, () => _openWhatsApp(whatsapp)),
+                    if (whatsapp.isNotEmpty && telefone.isNotEmpty) const SizedBox(width: 20),
+                    if (telefone.isNotEmpty)
+                      _actionButton(Icons.phone, "Ligar", Colors.blue, () => _makeCall(telefone)),
+                  ],
+                ),
+              ),
+
+              Divider(height: 10, color: Colors.indigo[100]),
               
               Expanded(
                 child: ListView(
                   children: [
-                    _buildSectionTitle("Informações Gerais"),
-                    _buildRow(Icons.bloodtype, "Tipo Sanguíneo", get('grupo_sanguineo')), 
+                    // --- PARTE 1: DADOS PÚBLICOS (TODOS VEEM) ---
+                    _buildSectionTitle("Informações Públicas"),
                     _buildRow(Icons.cake, "Nascimento", get('nascimento')),
-                    _buildRow(Icons.location_on, "Endereço", "${get('endereco')}, ${get('numero')}"),
-                    _buildRow(Icons.map, "Bairro/Comp", "${get('bairro')} - ${get('complemento')}"),
-                    _buildRow(Icons.phone_android, "WhatsApp", get('whatsapp')),
-                    _buildRow(Icons.phone, "Telefone", get('telefone')),
+                    _buildRow(Icons.bloodtype, "Tipo Sanguíneo", get('grupo_sanguineo')), 
+                    _buildRow(Icons.star, "Cargo Eclesiástico", get('cargo_atual')),
+                    _buildRow(Icons.shield, "Oficial", get('oficial_igreja')),
+                    _buildRow(Icons.groups, "Departamento", get('departamento')),
                     
-                    ListTile(
-                      leading: const Icon(Icons.info_outline, size: 18, color: Colors.grey),
-                      title: const Text("Situação", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                      subtitle: Text(get('situacao').toUpperCase(), style: TextStyle(fontWeight: FontWeight.bold, color: get('situacao').toUpperCase() == 'ATIVO' ? Colors.green : Colors.black)),
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
+                    // Contatos públicos para facilitar a comunicação
+                    if (whatsapp.isNotEmpty) _buildRow(Icons.phone_android, "WhatsApp", whatsapp),
+                    if (telefone.isNotEmpty) _buildRow(Icons.phone, "Telefone", telefone),
 
-                    if (get('filhos').isNotEmpty) ...[const SizedBox(height: 10), const Text("Filhos:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)), Text(get('filhos'), style: const TextStyle(fontSize: 14))],
-
-                    // DADOS EXTRAS VISÍVEIS APENAS PARA QUEM TEM PERMISSÃO (ADMIN OU FINANCEIRO)
+                    // --- PARTE 2: DADOS RESTRITOS (SÓ ADMIN/FINANCEIRO VEEM A FICHA COMPLETA) ---
                     if (canManage) ...[
                       const SizedBox(height: 20),
-                      Container(padding: const EdgeInsets.all(8), color: Colors.blue[50], child: const Center(child: Text("FICHA COMPLETA (ACESSO RESTRITO)", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)))),
-                      _buildSectionTitle("Dados Pessoais"),
+                      Container(
+                        padding: const EdgeInsets.all(8), 
+                        decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(8)), 
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.lock_open, size: 16, color: Colors.red[800]),
+                            const SizedBox(width: 8),
+                            Text("FICHA COMPLETA (ADMIN/FIN)", style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.bold)),
+                          ],
+                        )
+                      ),
+                      
+                      _buildSectionTitle("Endereço & Residência"),
+                      _buildRow(Icons.location_on, "Endereço", "${get('endereco')}, ${get('numero')}"),
+                      _buildRow(Icons.map, "Bairro", get('bairro')),
+                      _buildRow(Icons.location_city, "Cidade/UF", "${get('cidade')} - ${get('uf')}"),
+                      _buildRow(Icons.markunread_mailbox, "CEP", get('cep')),
+                      _buildRow(Icons.home_work, "Complemento", get('complemento')),
+
+                      _buildSectionTitle("Dados Pessoais & Documentos"),
+                      ListTile(
+                        leading: const Icon(Icons.info_outline, size: 18, color: Colors.grey),
+                        title: const Text("Situação Cadastral", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        subtitle: Text(get('situacao').toUpperCase(), style: TextStyle(fontWeight: FontWeight.bold, color: get('situacao').toUpperCase() == 'ATIVO' ? Colors.green : Colors.black)),
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
                       _buildRow(Icons.badge, "CPF", get('cpf')),
                       _buildRow(Icons.face, "Sexo", get('sexo')),
                       _buildRow(Icons.person_outline, "Pai", get('pai')),
@@ -113,19 +217,46 @@ class _MembersScreenState extends State<MembersScreen> {
                       _buildRow(Icons.school, "Escolaridade", get('escolaridade')),
                       _buildRow(Icons.work, "Profissão", get('profissao')),
                       
-                      _buildSectionTitle("Vida Eclesiástica"),
-                      _buildRow(Icons.star, "Cargo", get('cargo_atual')),
-                      _buildRow(Icons.shield, "Oficial", get('oficial_igreja')),
-                      _buildRow(Icons.groups, "Departamento", get('departamento')),
+                      _buildSectionTitle("Histórico da Igreja"),
                       _buildRow(Icons.church, "Membro Desde", get('membro_desde')),
                       _buildRow(Icons.water_drop, "Batismo", get('batismo_aguas')),
+                      _buildRow(Icons.handshake, "Admissão", get('tipo_admissao')),
                       
                       _buildSectionTitle("Família"),
                       _buildRow(Icons.favorite, "Estado Civil", get('estado_civil')),
                       _buildRow(Icons.event, "Casamento", get('data_casamento')),
                       _buildRow(Icons.person_add, "Cônjuge", get('conjuge')),
+                      
+                      if (get('filhos').isNotEmpty) ...[
+                        const SizedBox(height: 5), 
+                        const Text("Filhos:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)), 
+                        Text(get('filhos'), style: const TextStyle(fontSize: 14))
+                      ],
 
-                      if (get('observacoes').isNotEmpty) ...[const SizedBox(height: 10), _buildSectionTitle("Observações"), Text(get('observacoes'), style: const TextStyle(fontStyle: FontStyle.italic))]
+                      if (get('observacoes').isNotEmpty) ...[
+                        const SizedBox(height: 10), 
+                        _buildSectionTitle("Observações"), 
+                        Text(get('observacoes'), style: const TextStyle(fontStyle: FontStyle.italic))
+                      ],
+                      
+                      const SizedBox(height: 20),
+                      // Exibe se autorizou ou não
+                      Row(
+                        children: [
+                          Icon(
+                            (data['autoriza_compartilhamento'] ?? false) ? Icons.check_circle : Icons.cancel,
+                            color: (data['autoriza_compartilhamento'] ?? false) ? Colors.green : Colors.red,
+                            size: 16
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            (data['autoriza_compartilhamento'] ?? false) 
+                              ? "Autorizou compartilhamento de dados" 
+                              : "NÃO autorizou compartilhamento",
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
                     ]
                   ],
                 ),
@@ -137,13 +268,30 @@ class _MembersScreenState extends State<MembersScreen> {
     );
   }
 
+  Widget _actionButton(IconData icon, String label, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: color.withOpacity(0.1),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(height: 4),
+          Text(label, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold))
+        ],
+      ),
+    );
+  }
+
   Widget _buildSectionTitle(String title) {
     return Padding(padding: const EdgeInsets.only(top: 15, bottom: 5), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: TextStyle(color: Colors.indigo[900], fontWeight: FontWeight.bold, fontSize: 15)), Divider(height: 5, color: Colors.indigo[100])]));
   }
 
   Widget _buildRow(IconData icon, String label, String value) {
     if (value.trim().isEmpty || value == "null") return const SizedBox.shrink();
-    return Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, size: 16, color: Colors.grey[600]), const SizedBox(width: 8), Expanded(child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [TextSpan(text: "$label: ", style: TextStyle(color: Colors.grey[700], fontSize: 12)), TextSpan(text: value, style: const TextStyle(fontWeight: FontWeight.w500))])))]));
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, size: 18, color: Colors.grey[600]), const SizedBox(width: 10), Expanded(child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [TextSpan(text: "$label: ", style: TextStyle(color: Colors.grey[700], fontSize: 12)), TextSpan(text: value, style: const TextStyle(fontWeight: FontWeight.w500))])))]));
   }
 
   @override
@@ -152,7 +300,6 @@ class _MembersScreenState extends State<MembersScreen> {
 
     if (currentUser == null) return const Center(child: Text("Erro: Não logado"));
 
-    // 1. STREAM PARA VERIFICAR PERMISSÕES
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(currentUser.uid).snapshots(),
       builder: (context, userSnapshot) {
@@ -173,11 +320,11 @@ class _MembersScreenState extends State<MembersScreen> {
           
           body: Column(
             children: [
-              Padding(padding: const EdgeInsets.all(16.0), child: TextField(onChanged: (value) => setState(() => _searchText = value.toLowerCase()), decoration: InputDecoration(labelText: 'Buscar membro (nome)', prefixIcon: const Icon(Icons.search), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey[100]))),
+              Padding(padding: const EdgeInsets.all(16.0), child: TextField(onChanged: (value) => setState(() => _searchText = value.toLowerCase()), decoration: InputDecoration(labelText: 'Buscar membro', hintText: 'Nome, Cargo ou Departamento', prefixIcon: const Icon(Icons.search), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey[100]))),
               
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('users').orderBy('nome_completo').snapshots(), // Ordenado por nome
+                  stream: FirebaseFirestore.instance.collection('users').orderBy('nome_completo').snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.hasError) return const Center(child: Text("Erro ao carregar membros."));
                     if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
@@ -186,13 +333,16 @@ class _MembersScreenState extends State<MembersScreen> {
                     final filteredDocs = docs.where((doc) {
                       final data = doc.data() as Map<String, dynamic>;
                       final nome = (data['nome_completo'] ?? data['nome'] ?? "").toString().toLowerCase();
-                      return nome.contains(_searchText);
+                      final cargo = (data['cargo_atual'] ?? "").toString().toLowerCase();
+                      final depto = (data['departamento'] ?? "").toString().toLowerCase();
+                      return nome.contains(_searchText) || cargo.contains(_searchText) || depto.contains(_searchText);
                     }).toList();
 
                     if (filteredDocs.isEmpty) return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.people_outline, size: 50, color: Colors.grey), SizedBox(height: 10), Text("Nenhum membro encontrado.", style: TextStyle(color: Colors.grey))]));
 
                     return ListView.builder(
                       itemCount: filteredDocs.length,
+                      padding: const EdgeInsets.only(bottom: 80),
                       itemBuilder: (context, index) {
                         final doc = filteredDocs[index];
                         final data = doc.data() as Map<String, dynamic>;
@@ -203,10 +353,11 @@ class _MembersScreenState extends State<MembersScreen> {
                         String subtitulo = cargo;
                         String? fotoUrl = data['foto_url'];
                         String role = data['role'] ?? 'membro';
+                        bool isBirthday = _isBirthdayMonth(data['nascimento']);
+                        String whatsapp = data['whatsapp'] ?? "";
 
                         if (oficial != "NENHUM" && oficial.isNotEmpty && oficial != "null") subtitulo += " / $oficial";
                         
-                        // --- LÓGICA DE CORES DOS CARDS ---
                         Color avatarBg = Colors.indigo[100]!;
                         Color avatarIconColor = Colors.indigo[800]!;
                         IconData avatarIcon = Icons.person;
@@ -240,40 +391,72 @@ class _MembersScreenState extends State<MembersScreen> {
                             borderRadius: BorderRadius.circular(12),
                             side: cardBorderColor != null ? BorderSide(color: cardBorderColor, width: 1.5) : BorderSide.none,
                           ),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: avatarBg,
-                              backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
-                              child: fotoUrl == null 
-                                ? Icon(avatarIcon, color: avatarIconColor) 
-                                : null,
-                            ),
-                            title: Row(
-                              children: [
-                                Expanded(child: Text(nome, style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
-                                if (roleBadge != null) ...[
-                                  const SizedBox(width: 5),
-                                  roleBadge,
-                                ]
-                              ],
-                            ),
-                            subtitle: Text(subtitulo, style: TextStyle(color: Colors.grey[700])),
-                            
-                            // MENU DE AÇÕES
-                            trailing: canManage 
-                              ? PopupMenuButton<String>(
-                                  onSelected: (value) {
-                                    if (value == 'edit') _editMember(doc.id, data);
-                                    if (value == 'delete') _deleteMember(doc.id, nome);
-                                  },
-                                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                                    const PopupMenuItem<String>(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('Editar')])),
-                                    const PopupMenuItem<String>(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('Excluir')])),
-                                  ],
-                                )
-                              : const Icon(Icons.chevron_right, color: Colors.grey),
-                            
+                          child: InkWell(
                             onTap: () => _showMemberDetails(data, canManage),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: Row(
+                                children: [
+                                  Stack(
+                                    alignment: Alignment.topRight,
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 26,
+                                        backgroundColor: avatarBg,
+                                        backgroundImage: fotoUrl != null ? NetworkImage(fotoUrl) : null,
+                                        child: fotoUrl == null ? Icon(avatarIcon, color: avatarIconColor) : null,
+                                      ),
+                                      if (isBirthday)
+                                        Positioned(
+                                          right: -4,
+                                          top: -4,
+                                          child: GestureDetector(
+                                            onTap: () => _openWhatsApp(whatsapp, message: "Paz do Senhor, $nome! Feliz aniversário! Que Deus te abençoe! 🎉"),
+                                            child: Container(
+                                              decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4)]),
+                                              padding: const EdgeInsets.all(4),
+                                              child: const Text("🎂", style: TextStyle(fontSize: 16)),
+                                            ),
+                                          ),
+                                        )
+                                    ],
+                                  ),
+                                  const SizedBox(width: 12),
+                                  
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Flexible(child: Text(nome, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), overflow: TextOverflow.ellipsis)),
+                                            if (roleBadge != null) ...[const SizedBox(width: 5), roleBadge],
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(subtitulo, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                                      ],
+                                    ),
+                                  ),
+
+                                  if (canManage)
+                                    PopupMenuButton<String>(
+                                      icon: const Icon(Icons.more_vert, color: Colors.grey),
+                                      onSelected: (value) {
+                                        if (value == 'edit') _editMember(doc.id, data);
+                                        if (value == 'delete') _deleteMember(doc.id, nome);
+                                      },
+                                      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                                        const PopupMenuItem<String>(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('Editar')])),
+                                        const PopupMenuItem<String>(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('Excluir')])),
+                                      ],
+                                    )
+                                  else
+                                    const Icon(Icons.chevron_right, color: Colors.grey),
+                                ],
+                              ),
+                            ),
                           ),
                         );
                       },
@@ -291,15 +474,8 @@ class _MembersScreenState extends State<MembersScreen> {
   Widget _buildSmallBadge(String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withOpacity(0.5), width: 0.5),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: color),
-      ),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(4), border: Border.all(color: color.withOpacity(0.5), width: 0.5)),
+      child: Text(text, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: color)),
     );
   }
 }

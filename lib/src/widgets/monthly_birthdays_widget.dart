@@ -1,43 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart'; // Import necessário
 
 class MonthlyBirthdaysWidget extends StatelessWidget {
   const MonthlyBirthdaysWidget({super.key});
 
-  // Função para mostrar o contato
-  void _showContactDialog(BuildContext context, String nome, String whatsapp) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              const Icon(Icons.contact_phone, color: Colors.green),
-              const SizedBox(width: 10),
-              Expanded(child: Text("Contato de $nome", style: const TextStyle(fontSize: 18))),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text("WhatsApp / Telefone:"),
-              const SizedBox(height: 10),
-              SelectableText(
-                whatsapp.isEmpty ? "Não cadastrado" : whatsapp,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Fechar"),
-            ),
-          ],
-        );
-      },
-    );
+  // --- NOVA FUNÇÃO DE ABRIR WHATSAPP ---
+  Future<void> _openWhatsApp(BuildContext context, String phone, String nome) async {
+    String cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    if (cleanPhone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Número não cadastrado para este membro."))
+      );
+      return;
+    }
+    
+    // Adiciona o DDI do Brasil (55) se não tiver
+    if (!cleanPhone.startsWith('55')) cleanPhone = '55$cleanPhone';
+
+    // Mensagem automática
+    String message = "Paz do Senhor, $nome! Feliz aniversário! Que Deus te abençoe grandemente! 🎉🙏";
+    String urlString = "https://wa.me/$cleanPhone?text=${Uri.encodeComponent(message)}";
+
+    final Uri url = Uri.parse(urlString);
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Não foi possível abrir o WhatsApp."))
+      );
+    }
   }
 
   @override
@@ -144,8 +139,8 @@ class MonthlyBirthdaysWidget extends StatelessWidget {
                     // --- TORNAR O ITEM CLICÁVEL (INKWELL) ---
                     return InkWell(
                       onTap: () {
-                        // Chama a função para mostrar o dialog com o contato
-                        _showContactDialog(context, niver['nome'], niver['whatsapp']);
+                        // CHAMA A FUNÇÃO DIRETA DO ZAP AGORA
+                        _openWhatsApp(context, niver['whatsapp'], niver['nome']);
                       },
                       child: Row(
                         children: [
@@ -167,13 +162,14 @@ class MonthlyBirthdaysWidget extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(niver['nome'], style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-                                // Pequena dica visual que é clicável
+                                // Dica visual atualizada
                                 if (niver['whatsapp'].toString().isNotEmpty)
-                                  const Text("Ver contato", style: TextStyle(fontSize: 10, color: Colors.green)),
+                                  const Text("Enviar parabéns", style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)),
                               ],
                             ),
                           ),
-                          const Icon(Icons.touch_app, size: 16, color: Colors.grey),
+                          // Ícone atualizado para indicar envio
+                          const Icon(Icons.send, size: 16, color: Colors.green),
                         ],
                       ),
                     );
