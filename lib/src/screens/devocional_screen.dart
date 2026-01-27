@@ -14,6 +14,7 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
   final TextEditingController _tituloController = TextEditingController();
   final TextEditingController _versiculoController = TextEditingController();
   final TextEditingController _textoController = TextEditingController();
+  final TextEditingController _autorController = TextEditingController(); // <--- NOVO CONTROLLER
   bool _isSaving = false;
 
   // --- FUNÇÃO PARA ADICIONAR DEVOCIONAL ---
@@ -21,6 +22,7 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
     _tituloController.clear();
     _versiculoController.clear();
     _textoController.clear();
+    _autorController.clear(); // Limpa o campo autor
 
     showDialog(
       context: context,
@@ -34,6 +36,14 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
                 controller: _tituloController,
                 decoration: const InputDecoration(labelText: "Título", border: OutlineInputBorder()),
               ),
+              const SizedBox(height: 10),
+              
+              // --- CAMPO MANUAL DE AUTOR ---
+              TextField(
+                controller: _autorController,
+                decoration: const InputDecoration(labelText: "Autor", border: OutlineInputBorder()),
+              ),
+              
               const SizedBox(height: 10),
               TextField(
                 controller: _versiculoController,
@@ -52,35 +62,29 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
           ElevatedButton(
             onPressed: () async {
-              if (_tituloController.text.isEmpty || _textoController.text.isEmpty) return;
+              // Verifica se Autor também foi preenchido
+              if (_tituloController.text.isEmpty || _textoController.text.isEmpty || _autorController.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha Título, Autor e Mensagem.")));
+                return;
+              }
               
               Navigator.pop(ctx);
               setState(() => _isSaving = true);
 
               try {
                 final user = FirebaseAuth.instance.currentUser;
-                if (user != null) {
-                  // 1. BUSCA O NOME/APELIDO DO AUTOR ANTES DE SALVAR
-                  DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-                  Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
-                  
-                  String autorNome = userData['apelido'] ?? "";
-                  if (autorNome.isEmpty) {
-                    autorNome = userData['nome_completo'] ?? "Autor Desconhecido";
-                  }
-
-                  // 2. SALVA COM O CAMPO 'autor_nome'
-                  await FirebaseFirestore.instance.collection('devocionais').add({
-                    'titulo': _tituloController.text.trim(),
-                    'versiculo': _versiculoController.text.trim(),
-                    'texto': _textoController.text,
-                    'data': FieldValue.serverTimestamp(),
-                    'autor_uid': user.uid,
-                    'autor_nome': autorNome, // <--- CAMPO NOVO
-                  });
-                  
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Devocional publicado!")));
-                }
+                
+                await FirebaseFirestore.instance.collection('devocionais').add({
+                  'titulo': _tituloController.text.trim(),
+                  'versiculo': _versiculoController.text.trim(),
+                  'texto': _textoController.text,
+                  'data': FieldValue.serverTimestamp(),
+                  'autor_uid': user?.uid, // Ainda salvamos o ID de quem postou por segurança
+                  'autor_nome': _autorController.text.trim(), // <--- SALVA O QUE FOI DIGITADO
+                });
+                
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Devocional publicado!")));
+                
               } catch (e) {
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e")));
               } finally {
@@ -122,8 +126,10 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
                         DateFormat("d 'de' MMMM 'de' y", "pt_BR").format((data['data'] as Timestamp).toDate()),
                         style: TextStyle(color: Colors.grey[600], fontStyle: FontStyle.italic, fontSize: 13),
                       ),
+                    
                     if (data['data'] != null && data['autor_nome'] != null)
                       Text(" • ", style: TextStyle(color: Colors.grey[600])),
+                    
                     if (data['autor_nome'] != null)
                       Expanded(
                         child: Text(
@@ -179,6 +185,7 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
         if (userSnapshot.hasData && userSnapshot.data!.exists) {
            final userData = userSnapshot.data!.data() as Map<String, dynamic>;
            String role = userData['role'] ?? 'membro';
+           // Permite Admin ou Financeiro postar
            canPost = role == 'admin' || role == 'financeiro'; 
         }
 
@@ -241,7 +248,7 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
                                       decoration: BoxDecoration(color: Colors.orange[100], borderRadius: BorderRadius.circular(8)),
                                       child: Text(dataFormatada, style: TextStyle(color: Colors.orange[900], fontWeight: FontWeight.bold, fontSize: 12)),
                                     ),
-                                    // EXIBE AUTOR NA LISTA TAMBÉM
+                                    // --- EXIBE AUTOR NO CARD DA LISTA ---
                                     if (data['autor_nome'] != null) ...[
                                       const SizedBox(width: 8),
                                       Text(

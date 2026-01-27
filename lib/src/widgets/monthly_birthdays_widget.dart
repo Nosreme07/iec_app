@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart'; // Import necessário
+import 'package:url_launcher/url_launcher.dart'; 
 
 class MonthlyBirthdaysWidget extends StatelessWidget {
   const MonthlyBirthdaysWidget({super.key});
 
-  // --- NOVA FUNÇÃO DE ABRIR WHATSAPP ---
-  Future<void> _openWhatsApp(BuildContext context, String phone, String nome) async {
+  // --- FUNÇÃO ATUALIZADA: RECEBE APELIDO ---
+  Future<void> _openWhatsApp(BuildContext context, String phone, String nomeCompleto, String apelido) async {
     String cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
     
     if (cleanPhone.isEmpty) {
@@ -20,8 +20,14 @@ class MonthlyBirthdaysWidget extends StatelessWidget {
     // Adiciona o DDI do Brasil (55) se não tiver
     if (!cleanPhone.startsWith('55')) cleanPhone = '55$cleanPhone';
 
-    // Mensagem automática
-    String message = "Paz do Senhor, $nome! Feliz aniversário! Que Deus te abençoe grandemente! 🎉🙏";
+    // --- LÓGICA DO NOME PARA MENSAGEM ---
+    // Se tiver apelido, usa. Se não, pega só o primeiro nome.
+    String nomeParaMensagem = apelido.isNotEmpty 
+        ? apelido 
+        : nomeCompleto.split(' ')[0]; // Pega tudo antes do primeiro espaço
+
+    // Mensagem automática personalizada
+    String message = "Graça e Paz, $nomeParaMensagem! Feliz aniversário! Que Deus te abençoe grandemente! 🎉🙏";
     String urlString = "https://wa.me/$cleanPhone?text=${Uri.encodeComponent(message)}";
 
     final Uri url = Uri.parse(urlString);
@@ -54,6 +60,9 @@ class MonthlyBirthdaysWidget extends StatelessWidget {
           var data = doc.data() as Map<String, dynamic>;
           String nome = data['nome_completo'] ?? data['nome'] ?? 'Sem Nome';
           
+          // --- CAPTURA O APELIDO ---
+          String apelido = data['apelido'] ?? ''; // <--- IMPORTANTE
+
           // --- CAPTURA O WHATSAPP ---
           String whatsapp = data['whatsapp'] ?? data['celular'] ?? data['telefone'] ?? '';
 
@@ -78,7 +87,8 @@ class MonthlyBirthdaysWidget extends StatelessWidget {
             aniversariantes.add({
               'dia': nascimento.day,
               'nome': nome,
-              'whatsapp': whatsapp, // Salva para usar no clique
+              'apelido': apelido, // <--- GUARDA O APELIDO NA LISTA
+              'whatsapp': whatsapp, 
               'foto': data['foto_url'],
             });
           }
@@ -139,8 +149,13 @@ class MonthlyBirthdaysWidget extends StatelessWidget {
                     // --- TORNAR O ITEM CLICÁVEL (INKWELL) ---
                     return InkWell(
                       onTap: () {
-                        // CHAMA A FUNÇÃO DIRETA DO ZAP AGORA
-                        _openWhatsApp(context, niver['whatsapp'], niver['nome']);
+                        // Passa o nome E o apelido para a função
+                        _openWhatsApp(
+                          context, 
+                          niver['whatsapp'], 
+                          niver['nome'], 
+                          niver['apelido'] // <--- NOVO ARGUMENTO
+                        );
                       },
                       child: Row(
                         children: [
@@ -161,7 +176,11 @@ class MonthlyBirthdaysWidget extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(niver['nome'], style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                                // Mostra o apelido na lista se tiver, senão mostra o nome completo
+                                Text(
+                                  niver['apelido'].toString().isNotEmpty ? niver['apelido'] : niver['nome'], 
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)
+                                ),
                                 // Dica visual atualizada
                                 if (niver['whatsapp'].toString().isNotEmpty)
                                   const Text("Enviar parabéns", style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)),
