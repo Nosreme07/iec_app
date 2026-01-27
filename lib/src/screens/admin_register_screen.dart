@@ -45,7 +45,7 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
   final List<String> _acessoOptions = ['Membro', 'Visitante', 'Administrador', 'Financeiro'];
 
   final List<String> _fields = [
-    'nome_completo', 'pai', 'mae', 'nascimento', 'profissao', 'habilitacao', 
+    'nome_completo', 'apelido', 'pai', 'mae', 'nascimento', 'profissao', 'habilitacao', // ADICIONADO 'apelido'
     'naturalidade', 'nacionalidade', 'cpf', 'senha', 
     'endereco', 'numero', 'bairro', 'cidade', 'uf', 'cep', 'complemento',
     'whatsapp', 'telefone', 'email',
@@ -343,6 +343,9 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
               _buildSectionTitle("1. Dados Pessoais & Acesso"),
               _buildTextField('nome_completo', "Nome Completo", required: true),
               
+              // --- NOVO CAMPO: APELIDO ---
+              _buildTextField('apelido', "Como quer ser chamado (Apelido)", icon: Icons.face),
+
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange[200]!)),

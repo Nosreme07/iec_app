@@ -78,8 +78,18 @@ class _MembersScreenState extends State<MembersScreen> {
   // --- POPUP DE DETALHES ---
   void _showMemberDetails(Map<String, dynamic> data, bool canManage) {
     String get(String key) => (data[key] ?? "").toString();
-    String nomeDisplay = get('nome_completo');
-    if (nomeDisplay.isEmpty) nomeDisplay = get('nome'); 
+    
+    // 1. Pega o Nome Completo e Apelido
+    String nomeCompleto = get('nome_completo');
+    if (nomeCompleto.isEmpty) nomeCompleto = get('nome'); 
+    String apelido = get('apelido');
+
+    // 2. Define o Nome de Exibição Principal (Apelido tem prioridade)
+    String nomeExibicaoPrincipal = apelido.isNotEmpty ? apelido : nomeCompleto;
+    
+    // 3. Define o nome para mensagem do WhatsApp (mais informal se tiver apelido)
+    String nomeParaMensagem = apelido.isNotEmpty ? apelido : nomeCompleto.split(' ')[0];
+
     String? fotoUrl = data['foto_url'];
     String role = get('role');
     String whatsapp = get('whatsapp');
@@ -127,7 +137,8 @@ class _MembersScreenState extends State<MembersScreen> {
                       right: 0,
                       top: 0,
                       child: GestureDetector(
-                        onTap: () => _openWhatsApp(whatsapp, message: "Paz do Senhor, $nomeDisplay! Feliz aniversário! Que Deus continue te abençoando grandemente! 🎉🙏"),
+                        // Usando nomeParaMensagem (Apelido ou 1º Nome)
+                        onTap: () => _openWhatsApp(whatsapp, message: "Graça e Paz, $nomeParaMensagem! Feliz aniversário! Que Deus continue te abençoando grandemente! 🎉🙏"),
                         child: const CircleAvatar(
                           radius: 18,
                           backgroundColor: Colors.white,
@@ -138,11 +149,20 @@ class _MembersScreenState extends State<MembersScreen> {
                 ],
               ),
               const SizedBox(height: 10),
-              Text(nomeDisplay, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
               
+              // --- TÍTULO DO POPUP (NOME / APELIDO) ---
+              Text(nomeExibicaoPrincipal, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+              
+              // Se estiver mostrando o apelido em cima, mostra o nome completo embaixo
+              if (apelido.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(nomeCompleto, style: TextStyle(fontSize: 14, color: Colors.grey[600]), textAlign: TextAlign.center),
+                ),
+
               if (labelRole.isNotEmpty)
                 Container(
-                  margin: const EdgeInsets.only(top: 5), 
+                  margin: const EdgeInsets.only(top: 8), 
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), 
                   decoration: BoxDecoration(color: headerColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: headerColor.withOpacity(0.5))), 
                   child: Text(labelRole, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: headerColor))
@@ -167,19 +187,21 @@ class _MembersScreenState extends State<MembersScreen> {
               Expanded(
                 child: ListView(
                   children: [
-                    // --- PARTE 1: DADOS PÚBLICOS (TODOS VEEM) ---
                     _buildSectionTitle("Informações Públicas"),
+                    
+                    // Se não tiver apelido, não mostra campo extra. Se tiver, já está no título.
+                    // Mas se quiser reforçar, pode descomentar a linha abaixo:
+                    // if (apelido.isNotEmpty) _buildRow(Icons.face, "Apelido", apelido),
+
                     _buildRow(Icons.cake, "Nascimento", get('nascimento')),
                     _buildRow(Icons.bloodtype, "Tipo Sanguíneo", get('grupo_sanguineo')), 
                     _buildRow(Icons.star, "Cargo Eclesiástico", get('cargo_atual')),
                     _buildRow(Icons.shield, "Oficial", get('oficial_igreja')),
                     _buildRow(Icons.groups, "Departamento", get('departamento')),
                     
-                    // Contatos públicos para facilitar a comunicação
                     if (whatsapp.isNotEmpty) _buildRow(Icons.phone_android, "WhatsApp", whatsapp),
                     if (telefone.isNotEmpty) _buildRow(Icons.phone, "Telefone", telefone),
 
-                    // --- PARTE 2: DADOS RESTRITOS (SÓ ADMIN/FINANCEIRO VEEM A FICHA COMPLETA) ---
                     if (canManage) ...[
                       const SizedBox(height: 20),
                       Container(
@@ -240,7 +262,6 @@ class _MembersScreenState extends State<MembersScreen> {
                       ],
                       
                       const SizedBox(height: 20),
-                      // Exibe se autorizou ou não
                       Row(
                         children: [
                           Icon(
@@ -320,7 +341,7 @@ class _MembersScreenState extends State<MembersScreen> {
           
           body: Column(
             children: [
-              Padding(padding: const EdgeInsets.all(16.0), child: TextField(onChanged: (value) => setState(() => _searchText = value.toLowerCase()), decoration: InputDecoration(labelText: 'Buscar membro', hintText: 'Nome, Cargo ou Departamento', prefixIcon: const Icon(Icons.search), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey[100]))),
+              Padding(padding: const EdgeInsets.all(16.0), child: TextField(onChanged: (value) => setState(() => _searchText = value.toLowerCase()), decoration: InputDecoration(labelText: 'Buscar membro', hintText: 'Nome, Apelido, Cargo ou Depto', prefixIcon: const Icon(Icons.search), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey[100]))),
               
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
@@ -333,9 +354,10 @@ class _MembersScreenState extends State<MembersScreen> {
                     final filteredDocs = docs.where((doc) {
                       final data = doc.data() as Map<String, dynamic>;
                       final nome = (data['nome_completo'] ?? data['nome'] ?? "").toString().toLowerCase();
+                      final apelido = (data['apelido'] ?? "").toString().toLowerCase();
                       final cargo = (data['cargo_atual'] ?? "").toString().toLowerCase();
                       final depto = (data['departamento'] ?? "").toString().toLowerCase();
-                      return nome.contains(_searchText) || cargo.contains(_searchText) || depto.contains(_searchText);
+                      return nome.contains(_searchText) || apelido.contains(_searchText) || cargo.contains(_searchText) || depto.contains(_searchText);
                     }).toList();
 
                     if (filteredDocs.isEmpty) return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.people_outline, size: 50, color: Colors.grey), SizedBox(height: 10), Text("Nenhum membro encontrado.", style: TextStyle(color: Colors.grey))]));
@@ -347,7 +369,12 @@ class _MembersScreenState extends State<MembersScreen> {
                         final doc = filteredDocs[index];
                         final data = doc.data() as Map<String, dynamic>;
                         
-                        String nome = data['nome_completo'] ?? data['nome'] ?? "Sem Nome";
+                        String nomeCompleto = data['nome_completo'] ?? data['nome'] ?? "Sem Nome";
+                        String apelido = data['apelido'] ?? "";
+                        
+                        // LÓGICA DE EXIBIÇÃO NO CARD (LISTA)
+                        String nomeExibicao = apelido.isNotEmpty ? apelido : nomeCompleto;
+
                         String cargo = data['cargo_atual'] ?? data['role'] ?? "-";
                         String oficial = data['oficial_igreja'] ?? "NENHUM";
                         String subtitulo = cargo;
@@ -412,7 +439,8 @@ class _MembersScreenState extends State<MembersScreen> {
                                           right: -4,
                                           top: -4,
                                           child: GestureDetector(
-                                            onTap: () => _openWhatsApp(whatsapp, message: "Paz do Senhor, $nome! Feliz aniversário! Que Deus te abençoe! 🎉"),
+                                            // Usando apelido ou primeiro nome na mensagem rápida também
+                                            onTap: () => _openWhatsApp(whatsapp, message: "Paz do Senhor, ${apelido.isNotEmpty ? apelido : nomeCompleto.split(' ')[0]}! Feliz aniversário! Que Deus te abençoe! 🎉"),
                                             child: Container(
                                               decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4)]),
                                               padding: const EdgeInsets.all(4),
@@ -430,7 +458,7 @@ class _MembersScreenState extends State<MembersScreen> {
                                       children: [
                                         Row(
                                           children: [
-                                            Flexible(child: Text(nome, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), overflow: TextOverflow.ellipsis)),
+                                            Flexible(child: Text(nomeExibicao, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), overflow: TextOverflow.ellipsis)),
                                             if (roleBadge != null) ...[const SizedBox(width: 5), roleBadge],
                                           ],
                                         ),
@@ -445,7 +473,7 @@ class _MembersScreenState extends State<MembersScreen> {
                                       icon: const Icon(Icons.more_vert, color: Colors.grey),
                                       onSelected: (value) {
                                         if (value == 'edit') _editMember(doc.id, data);
-                                        if (value == 'delete') _deleteMember(doc.id, nome);
+                                        if (value == 'delete') _deleteMember(doc.id, nomeCompleto);
                                       },
                                       itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
                                         const PopupMenuItem<String>(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('Editar')])),

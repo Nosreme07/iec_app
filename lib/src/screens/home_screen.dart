@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart'; 
+
+// IMPORTS DAS TELAS
 import 'profile_screen.dart';
 import 'bible_screen.dart';
 import 'hymnal_screen.dart';
@@ -10,10 +13,12 @@ import 'annual_agenda_screen.dart';
 import 'scale_screen.dart';
 import 'patrimonio_screen.dart'; 
 import 'finance_screen.dart'; 
+import 'devocional_screen.dart'; // <--- Tela de Devocional
 
+// IMPORTS DOS WIDGETS
 import '../widgets/home_notices_widget.dart'; 
 import '../widgets/monthly_birthdays_widget.dart';
-import '../widgets/mural_avisos_widget.dart'; // Import the new widget here
+import '../widgets/mural_avisos_widget.dart'; 
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,10 +30,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  // Lista das telas principais (Bottom Navigation)
   final List<Widget> _screens = [
-    const HomeContent(),   // Índice 0: Grade de ícones + Avisos + Aniversariantes
-    const ProfileScreen(), // Índice 1: Perfil
+    const HomeContent(),   
+    const ProfileScreen(), 
   ];
 
   void _onItemTapped(int index) {
@@ -41,7 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("IEC-MORENO", style: TextStyle(color: Colors.white)),
+        title: const Text("IEC-MORENO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.blue[900],
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
@@ -62,23 +66,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- CONTEÚDO DA TELA INICIAL (SCROLLABLE) ---
+// --- CONTEÚDO DA TELA INICIAL ---
 class HomeContent extends StatelessWidget {
   const HomeContent({super.key});
+
+  // --- FUNÇÃO PARA ABRIR REDES SOCIAIS ---
+  Future<void> _launchSocialMedia(String urlString) async {
+    final Uri url = Uri.parse(urlString);
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      throw Exception('Não foi possível abrir $url');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
-    // Se não estiver logado, mostra carregando
     if (user == null) return const Center(child: CircularProgressIndicator());
 
-    // USAMOS STREAMBUILDER PARA LER A "ROLE" DO BANCO EM TEMPO REAL
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
       builder: (context, snapshot) {
         
-        // Enquanto carrega ou se der erro, assume que é membro comum por segurança
         String role = 'membro';
         
         if (snapshot.hasData && snapshot.data!.exists) {
@@ -86,11 +95,10 @@ class HomeContent extends StatelessWidget {
           role = data['role'] ?? 'membro';
         }
 
-        // --- DEFINIÇÃO DE QUEM PODE VER O BOTÃO ---
         bool canViewFinance = role == 'admin' || role == 'financeiro';
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: 16), // Adjusted padding
+          padding: const EdgeInsets.symmetric(vertical: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -109,7 +117,6 @@ class HomeContent extends StatelessWidget {
                 child: GridView.count(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  // Layout de 3 colunas
                   crossAxisCount: 3,
                   crossAxisSpacing: 10,
                   mainAxisSpacing: 10,
@@ -117,125 +124,59 @@ class HomeContent extends StatelessWidget {
 
                   children: [
                     // 1. BÍBLIA
-                    _buildMenuCard(
-                      context,
-                      icon: Icons.menu_book,
-                      label: "Bíblia",
-                      color: Colors.brown,
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const BibleScreen()));
-                      },
-                    ),
+                    _buildMenuCard(context, icon: Icons.menu_book, label: "Bíblia", color: Colors.brown, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const BibleScreen()))),
+                    
+                    // 2. HINOS
+                    _buildMenuCard(context, icon: Icons.library_music, label: "Salmos & Hinos", color: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()))),
+                    
+                    // 3. DEVOCIONAL (NOVO)
+                    _buildMenuCard(context, icon: Icons.local_florist, label: "Devocional", color: Colors.pink, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DevocionalScreen()))),
 
-                    // 2. SALMOS E HINOS
-                    _buildMenuCard(
-                      context,
-                      icon: Icons.library_music,
-                      label: "Salmos & Hinos",
-                      color: Colors.orange,
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()));
-                      },
-                    ),
+                    // 4. AGENDA SEMANAL
+                    _buildMenuCard(context, icon: Icons.calendar_view_week, label: "Agenda Semanal", color: Colors.blue, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AgendaScreen()))),
+                    
+                    // 5. AGENDA ANUAL
+                    _buildMenuCard(context, icon: Icons.calendar_month, label: "Agenda Anual", color: Colors.purple, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AnnualAgendaScreen()))),
+                    
+                    // 6. ESCALA
+                    _buildMenuCard(context, icon: Icons.view_timeline, label: "Escala", color: Colors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ScaleScreen()))),
+                    
+                    // 7. PATRIMÔNIO
+                    _buildMenuCard(context, icon: Icons.inventory_2, label: "Patrimônio", color: Colors.blueGrey, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PatrimonioScreen()))),
+                    
+                    // 8. MEMBROS
+                    _buildMenuCard(context, icon: Icons.groups, label: "Membros", color: Colors.indigo, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MembersScreen()))),
 
-                    // 3. AGENDA SEMANAL
-                    _buildMenuCard(
-                      context,
-                      icon: Icons.calendar_view_week,
-                      label: "Agenda Semanal",
-                      color: Colors.blue,
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const AgendaScreen()));
-                      },
-                    ),
-
-                    // 4. AGENDA ANUAL
-                    _buildMenuCard(
-                      context,
-                      icon: Icons.calendar_month,
-                      label: "Agenda Anual",
-                      color: Colors.purple,
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const AnnualAgendaScreen()));
-                      },
-                    ),
-
-                    // 5. ESCALA
-                    _buildMenuCard(
-                      context,
-                      icon: Icons.view_timeline,
-                      label: "Escala",
-                      color: Colors.teal,
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const ScaleScreen()));
-                      },
-                    ),
-
-                    // 6. PATRIMÔNIO
-                    _buildMenuCard(
-                      context,
-                      icon: Icons.inventory_2,
-                      label: "Patrimônio",
-                      color: Colors.blueGrey,
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const PatrimonioScreen()));
-                      },
-                    ),
-
-                    // 7. MEMBROS
-                    _buildMenuCard(
-                      context,
-                      icon: Icons.groups,
-                      label: "Membros",
-                      color: Colors.indigo,
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const MembersScreen()));
-                      },
-                    ),
-
-                    // 8. FINANÇAS (CONDICIONAL: ADMIN OU FINANCEIRO)
+                    // 9. FINANÇAS (RESTRICTO)
                     if (canViewFinance)
-                      _buildMenuCard(
-                        context,
-                        icon: Icons.attach_money,
-                        label: "Finanças",
-                        color: Colors.green[700]!,
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()));
-                        },
-                      ),
+                      _buildMenuCard(context, icon: Icons.attach_money, label: "Finanças", color: Colors.green[700]!, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()))),
                   ],
                 ),
               ),
 
               const SizedBox(height: 30),
 
-              // --- 1. AVISOS DA SEMANA (LETREIRO) ---
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20.0), // Consistent padding with title
-                child: Text(
-                  "Avisos da Semana",
-                  style: TextStyle(
-                    fontSize: 18, 
-                    fontWeight: FontWeight.bold, 
-                    color: Colors.black87
-                  ),
-                ),
+                padding: EdgeInsets.symmetric(horizontal: 20.0),
+                child: Text("Avisos da Semana", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
               ),
               const SizedBox(height: 10),
               
-              // --- NOVO WIDGET DE MURAL DE AVISOS (TEXTO) ---
+              // MURAL E CARROSSEL
               const MuralAvisosWidget(), 
-
-              // --- CARROSSEL DE EVENTOS ---
               const WeeklyNoticesWidget(),
 
               const SizedBox(height: 20),
-
-              // --- 2. ANIVERSARIANTES DO MÊS ---
+              
+              // ANIVERSARIANTES
               const MonthlyBirthdaysWidget(),
 
-              const SizedBox(height: 30), // Espaço final
+              const SizedBox(height: 30),
+
+              // --- SEÇÃO: REDES SOCIAIS ---
+              _buildSocialMediaSection(),
+
+              const SizedBox(height: 30),
             ],
           ),
         );
@@ -243,14 +184,71 @@ class HomeContent extends StatelessWidget {
     );
   }
 
-  // --- WIDGET DO BOTÃO DO MENU ---
-  Widget _buildMenuCard(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
+  // --- WIDGET DAS REDES SOCIAIS ---
+  Widget _buildSocialMediaSection() {
+    return Column(
+      children: [
+        Divider(color: Colors.grey[300]),
+        const SizedBox(height: 10),
+        Text("Siga nossas redes sociais", style: TextStyle(color: Colors.grey[600], fontSize: 14, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 15),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // INSTAGRAM
+            _socialButton(
+              icon: Icons.camera_alt, 
+              color: Colors.pink,
+              label: "Instagram",
+              onTap: () => _launchSocialMedia("https://www.instagram.com/iec.moreno"), 
+            ),
+            const SizedBox(width: 20),
+            
+            // YOUTUBE
+            _socialButton(
+              icon: Icons.play_circle_fill,
+              color: Colors.red,
+              label: "YouTube",
+              onTap: () => _launchSocialMedia("https://www.youtube.com/@IecMoreno"), 
+            ),
+            const SizedBox(width: 20),
+
+            // FACEBOOK
+            _socialButton(
+              icon: Icons.facebook,
+              color: Colors.blue[800]!,
+              label: "Facebook",
+              onTap: () => _launchSocialMedia("https://www.facebook.com/iecmorenope"), 
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _socialButton({required IconData icon, required Color color, required String label, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(50),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+              border: Border.all(color: color.withOpacity(0.3), width: 1),
+            ),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(height: 4),
+          Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold))
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMenuCard(BuildContext context, {required IconData icon, required String label, required Color color, required VoidCallback onTap}) {
     return Material(
       color: Colors.white,
       elevation: 2,
@@ -263,25 +261,13 @@ class HomeContent extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
               child: Icon(icon, size: 30, color: color),
             ),
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
             ),
           ],
         ),
