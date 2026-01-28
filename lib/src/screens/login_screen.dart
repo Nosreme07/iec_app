@@ -246,7 +246,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 30),
                 
                 Text(
-                  "Versão 1.0.0\nProduzido por Emerson Fernandes",
+                  "Versão 1.0.0\nCriado por Emerson Fernandes",
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
                 ),

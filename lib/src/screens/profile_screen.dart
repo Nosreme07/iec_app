@@ -24,7 +24,6 @@ class ProfileScreen extends StatelessWidget {
   }
 
   // --- FUNÇÃO AUXILIAR: GERA O TEXTO COMPLETO DO QR CODE ---
-  // Essa função garante que o PDF e a Tela tenham exatamente os mesmos dados
   String _gerarTextoQrCode(Map<String, dynamic> data, String uid) {
     String get(String key) => (data[key] ?? "").toString().toUpperCase();
     
@@ -57,7 +56,6 @@ class ProfileScreen extends StatelessWidget {
     qrBuffer.writeln("--------------------------------");
 
     // 3. CONTATO E ENDEREÇO
-    // Endereço formatado
     String endereco = get('endereco');
     String numero = get('numero');
     if (endereco.isNotEmpty) {
@@ -109,7 +107,17 @@ class ProfileScreen extends StatelessWidget {
     List<String> partes = nome.split(' ');
     String nomeCurto = partes.isNotEmpty ? partes[0] : "";
     if (partes.length > 1) nomeCurto += " ${partes.last}";
-    String cargo = get('cargo_atual');
+
+    // --- MUDANÇA 1: LÓGICA DO CARGO NO PDF ---
+    String oficial = get('oficial_igreja');
+    String cargo;
+    if (oficial.isNotEmpty && oficial != "NENHUM") {
+      cargo = oficial; // Prioridade para oficial
+    } else {
+      cargo = get('cargo_atual'); // Senão, cargo atual
+    }
+    // ------------------------------------------
+
     String membroDesde = get('membro_desde');
 
     // GERA O QR CODE COMPLETO USANDO A FUNÇÃO AUXILIAR
@@ -230,7 +238,7 @@ class ProfileScreen extends StatelessWidget {
                             children: [
                               pw.BarcodeWidget(
                                 barcode: pw.Barcode.qrCode(),
-                                data: qrData, // AQUI ESTÁ O DADO COMPLETO
+                                data: qrData,
                                 width: 90, height: 90,
                                 color: PdfColors.black,
                                 drawText: false,
@@ -255,8 +263,7 @@ class ProfileScreen extends StatelessWidget {
 
   // --- CÓDIGO DA INTERFACE ---
   void _showChangePasswordDialog(BuildContext context) {
-    // (Mantenha o código do diálogo de senha aqui)
-     final currentPasswordController = TextEditingController();
+    final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
 
@@ -340,8 +347,6 @@ class ProfileScreen extends StatelessWidget {
 
   // --- EXIBIR DETALHES COMPLETOS (BOTTOM SHEET) ---
   void _showMyDetails(BuildContext context, Map<String, dynamic> data) {
-    // (Código do BottomSheet mantido igual, pois já mostrava tudo)
-    // Vou incluir aqui resumido para garantir que funcione
     String get(String key) => (data[key] ?? "").toString();
     String nomeDisplay = get('nome_completo').isNotEmpty ? get('nome_completo') : "Membro";
     String? fotoUrl = data['foto_url'];
@@ -454,7 +459,17 @@ class ProfileScreen extends StatelessWidget {
           if (partesNome.length > 1) nomeCartao += " ${partesNome.last}";
 
           String fotoUrl = get('foto_url');
-          String cargo = get('cargo_atual').isNotEmpty ? get('cargo_atual') : "Membro";
+          
+          // --- MUDANÇA 2: LÓGICA DO CARGO NA TELA ---
+          String oficial = get('oficial_igreja');
+          String cargoAtual = get('cargo_atual');
+          
+          // Se tiver oficial e não for NENHUM, mostra oficial. Senão, mostra cargo ou "Membro".
+          String cargo = (oficial.isNotEmpty && oficial.toUpperCase() != "NENHUM") 
+              ? oficial 
+              : (cargoAtual.isNotEmpty ? cargoAtual : "Membro");
+          // -------------------------------------------
+          
           String membroDesde = get('membro_desde');
           
           // GERA O QR CODE COMPLETO NA TELA TAMBÉM
