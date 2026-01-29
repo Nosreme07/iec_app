@@ -13,7 +13,8 @@ import 'annual_agenda_screen.dart';
 import 'scale_screen.dart';
 import 'patrimonio_screen.dart'; 
 import 'finance_screen.dart'; 
-import 'devocional_screen.dart'; // <--- Tela de Devocional
+import 'devocional_screen.dart';
+import 'notices_history_screen.dart'; // Tela de Histórico
 
 // IMPORTS DOS WIDGETS
 import '../widgets/home_notices_widget.dart'; 
@@ -43,13 +44,37 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("IEC-MORENO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.blue[900],
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(icon: const Icon(Icons.notifications), onPressed: () {}),
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('users').doc(user?.uid).snapshots(),
+            builder: (context, snapshot) {
+              String role = 'membro';
+              if (snapshot.hasData && snapshot.data!.exists) {
+                final data = snapshot.data!.data() as Map<String, dynamic>;
+                role = data['role'] ?? 'membro';
+              }
+
+              return IconButton(
+                icon: const Icon(Icons.notifications),
+                tooltip: "Mural de Avisos",
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => NoticesHistoryScreen(userRole: role),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ],
       ),
       body: _screens[_selectedIndex],
@@ -66,11 +91,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- CONTEÚDO DA TELA INICIAL ---
 class HomeContent extends StatelessWidget {
   const HomeContent({super.key});
 
-  // --- FUNÇÃO PARA ABRIR REDES SOCIAIS ---
   Future<void> _launchSocialMedia(String urlString) async {
     final Uri url = Uri.parse(urlString);
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
@@ -88,14 +111,12 @@ class HomeContent extends StatelessWidget {
       stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
       builder: (context, snapshot) {
         
+        // A variável role continua útil para outras lógicas se precisar
         String role = 'membro';
-        
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>;
           role = data['role'] ?? 'membro';
         }
-
-        bool canViewFinance = role == 'admin' || role == 'financeiro';
 
         return SingleChildScrollView(
           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -121,61 +142,31 @@ class HomeContent extends StatelessWidget {
                   crossAxisSpacing: 10,
                   mainAxisSpacing: 10,
                   childAspectRatio: 0.85,
-
                   children: [
-                    // 1. BÍBLIA
                     _buildMenuCard(context, icon: Icons.menu_book, label: "Bíblia", color: Colors.brown, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const BibleScreen()))),
-                    
-                    // 2. HINOS
                     _buildMenuCard(context, icon: Icons.library_music, label: "Salmos & Hinos", color: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()))),
-                    
-                    // 3. DEVOCIONAL (NOVO)
                     _buildMenuCard(context, icon: Icons.local_florist, label: "Devocional", color: Colors.pink, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DevocionalScreen()))),
-
-                    // 4. AGENDA SEMANAL
                     _buildMenuCard(context, icon: Icons.calendar_view_week, label: "Agenda Semanal", color: Colors.blue, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AgendaScreen()))),
-                    
-                    // 5. AGENDA ANUAL
                     _buildMenuCard(context, icon: Icons.calendar_month, label: "Agenda Anual", color: Colors.purple, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AnnualAgendaScreen()))),
-                    
-                    // 6. ESCALA
                     _buildMenuCard(context, icon: Icons.view_timeline, label: "Escala", color: Colors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ScaleScreen()))),
-                    
-                    // 7. PATRIMÔNIO
                     _buildMenuCard(context, icon: Icons.inventory_2, label: "Patrimônio", color: Colors.blueGrey, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PatrimonioScreen()))),
-                    
-                    // 8. MEMBROS
                     _buildMenuCard(context, icon: Icons.groups, label: "Membros", color: Colors.indigo, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MembersScreen()))),
 
-                    // 9. FINANÇAS (RESTRICTO)
-                    if (canViewFinance)
-                      _buildMenuCard(context, icon: Icons.attach_money, label: "Finanças", color: Colors.green[700]!, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()))),
+                    // --- MUDANÇA: O ÍCONE FINANÇAS AGORA APARECE PARA TODOS ---
+                    _buildMenuCard(context, icon: Icons.attach_money, label: "Finanças", color: Colors.green[700]!, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()))),
                   ],
                 ),
               ),
 
               const SizedBox(height: 30),
-
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20.0),
-                child: Text("Avisos da Semana", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-              ),
-              const SizedBox(height: 10),
               
-              // MURAL E CARROSSEL
               const MuralAvisosWidget(), 
               const WeeklyNoticesWidget(),
-
               const SizedBox(height: 20),
-              
-              // ANIVERSARIANTES
               const MonthlyBirthdaysWidget(),
-
               const SizedBox(height: 30),
 
-              // --- SEÇÃO: REDES SOCIAIS ---
               _buildSocialMediaSection(),
-
               const SizedBox(height: 30),
             ],
           ),
@@ -195,31 +186,11 @@ class HomeContent extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // INSTAGRAM
-            _socialButton(
-              icon: Icons.camera_alt, 
-              color: Colors.pink,
-              label: "Instagram",
-              onTap: () => _launchSocialMedia("https://www.instagram.com/iec.moreno"), 
-            ),
+            _socialButton(icon: Icons.camera_alt, color: Colors.pink, label: "Instagram", onTap: () => _launchSocialMedia("https://www.instagram.com/iec.moreno")),
             const SizedBox(width: 20),
-            
-            // YOUTUBE
-            _socialButton(
-              icon: Icons.play_circle_fill,
-              color: Colors.red,
-              label: "YouTube",
-              onTap: () => _launchSocialMedia("https://www.youtube.com/@IecMoreno"), 
-            ),
+            _socialButton(icon: Icons.play_circle_fill, color: Colors.red, label: "YouTube", onTap: () => _launchSocialMedia("https://www.youtube.com/@IecMoreno")),
             const SizedBox(width: 20),
-
-            // FACEBOOK
-            _socialButton(
-              icon: Icons.facebook,
-              color: Colors.blue[800]!,
-              label: "Facebook",
-              onTap: () => _launchSocialMedia("https://www.facebook.com/iecmorenope"), 
-            ),
+            _socialButton(icon: Icons.facebook, color: Colors.blue[800]!, label: "Facebook", onTap: () => _launchSocialMedia("https://www.facebook.com/iecmorenope")),
           ],
         ),
       ],

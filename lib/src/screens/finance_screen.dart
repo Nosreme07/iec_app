@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart'; 
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter/services.dart'; // NECESSÁRIO PARA COPIAR O PIX
 import '../services/pdf_generator.dart'; 
 
 class FinanceScreen extends StatefulWidget {
@@ -79,7 +80,65 @@ class _FinanceScreenState extends State<FinanceScreen> {
   DateTime _getInicioMes() => DateTime(_mesAtual.year, _mesAtual.month, 1);
   DateTime _getFimMes() => DateTime(_mesAtual.year, _mesAtual.month + 1, 0, 23, 59, 59);
 
-  // --- SELEÇÃO DE IMAGEM OTIMIZADA (BAIXA QUALIDADE) ---
+  // --- POPUP DE DADOS BANCÁRIOS ---
+  void _exibirDadosBancarios() {
+    const String pixKey = "30057670000105"; 
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.pix, color: Colors.green),
+            SizedBox(width: 10),
+            Text("Dados para PIX"),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Text("Chave PIX (CNPJ):", style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 5),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(child: Text(pixKey, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+                    IconButton(
+                      icon: const Icon(Icons.copy, color: Colors.blue),
+                      onPressed: () {
+                        Clipboard.setData(const ClipboardData(text: pixKey));
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Chave PIX copiada!"), backgroundColor: Colors.green),
+                        );
+                      },
+                    )
+                  ],
+                ),
+              ),
+              const SizedBox(height: 15),
+              const Text("Ou escaneie o QR Code:", style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 5),
+              Image.asset('assets/images/qrcode_pix.png', height: 150, errorBuilder: (context, error, stackTrace) => const Icon(Icons.qr_code_2, size: 100)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Fechar")),
+        ],
+      ),
+    );
+  }
+
+  // --- SELEÇÃO DE IMAGEM OTIMIZADA ---
   Future<void> _pickImage(StateSetter setStateDialog) async {
     showModalBottomSheet(
       context: context,
@@ -92,9 +151,9 @@ class _FinanceScreenState extends State<FinanceScreen> {
               Navigator.pop(context);
               final XFile? photo = await _picker.pickImage(
                 source: ImageSource.camera,
-                imageQuality: 25, // Qualidade baixa (0-100) para economizar espaço
-                maxWidth: 800,    // Redimensiona a largura máxima
-                maxHeight: 800,   // Redimensiona a altura máxima
+                imageQuality: 25, 
+                maxWidth: 800,    
+                maxHeight: 800,   
               );
               if (photo != null) {
                 setStateDialog(() => _imageFile = File(photo.path));
@@ -108,8 +167,8 @@ class _FinanceScreenState extends State<FinanceScreen> {
               Navigator.pop(context);
               final XFile? image = await _picker.pickImage(
                 source: ImageSource.gallery,
-                imageQuality: 25, // Qualidade baixa
-                maxWidth: 800,    // Redimensiona
+                imageQuality: 25, 
+                maxWidth: 800,    
                 maxHeight: 800,
               );
               if (image != null) {
@@ -128,10 +187,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
     try {
       String fileName = DateTime.now().millisecondsSinceEpoch.toString();
-      // Salva na pasta 'comprovantes'
       Reference ref = FirebaseStorage.instance.ref().child('comprovantes/$fileName.jpg');
-      
-      // Upload do arquivo
       UploadTask uploadTask = ref.putFile(_imageFile!);
       TaskSnapshot snapshot = await uploadTask;
       return await snapshot.ref.getDownloadURL();
@@ -151,7 +207,6 @@ class _FinanceScreenState extends State<FinanceScreen> {
     setState(() => _isSaving = true); 
 
     try {
-      // 1. Upload da Imagem (se houver nova)
       String? downloadUrl = await _uploadImage();
 
       String valorRaw = _valorController.text.replaceAll('.', '').replaceAll(',', '.');
@@ -200,12 +255,11 @@ class _FinanceScreenState extends State<FinanceScreen> {
     ) ?? false;
 
     if (confirm) {
-      // Tenta deletar a imagem do Storage se existir
       if (imageUrl != null && imageUrl.isNotEmpty) {
         try {
           await FirebaseStorage.instance.refFromURL(imageUrl).delete();
         } catch (e) {
-          print("Erro ao deletar imagem antiga (pode já ter sido apagada): $e");
+          print("Erro ao deletar imagem antiga: $e");
         }
       }
       await FirebaseFirestore.instance.collection('financas').doc(docId).delete();
@@ -230,7 +284,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
   // --- FORMULÁRIO ---
   void _showFormDialog({String? docId, Map<String, dynamic>? data}) {
-    _imageFile = null; // Reseta imagem local
+    _imageFile = null; 
     
     if (data != null) {
       _tipoSelecionado = data['tipo'];
@@ -265,7 +319,6 @@ class _FinanceScreenState extends State<FinanceScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // TIPO
                     Row(
                       children: [
                         Expanded(
@@ -311,7 +364,6 @@ class _FinanceScreenState extends State<FinanceScreen> {
                     ),
                     const SizedBox(height: 15),
 
-                    // CAMPOS
                     TextField(
                       controller: _nomeController,
                       decoration: const InputDecoration(
@@ -348,7 +400,6 @@ class _FinanceScreenState extends State<FinanceScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // --- CAMPO DE ANEXAR COMPROVANTE ---
                     GestureDetector(
                       onTap: () => _pickImage(setStateDialog),
                       child: Container(
@@ -365,19 +416,19 @@ class _FinanceScreenState extends State<FinanceScreen> {
                               child: Image.file(_imageFile!, fit: BoxFit.cover),
                             )
                           : (_imageUrl != null && _imageUrl!.isNotEmpty)
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Image.network(_imageUrl!, fit: BoxFit.cover),
-                                )
-                              : Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: const [
-                                    Icon(Icons.camera_alt, size: 40, color: Colors.grey),
-                                    SizedBox(height: 8),
-                                    Text("Anexar Comprovante", style: TextStyle(color: Colors.grey)),
-                                    Text("(Qualidade Otimizada)", style: TextStyle(color: Colors.grey, fontSize: 10)),
-                                  ],
-                                ),
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.network(_imageUrl!, fit: BoxFit.cover),
+                              )
+                            : Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  Icon(Icons.camera_alt, size: 40, color: Colors.grey),
+                                  SizedBox(height: 8),
+                                  Text("Anexar Comprovante", style: TextStyle(color: Colors.grey)),
+                                  Text("(Qualidade Otimizada)", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                                ],
+                              ),
                       ),
                     ),
                     if (_imageFile != null || (_imageUrl != null && _imageUrl!.isNotEmpty))
@@ -425,7 +476,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
      } catch (e) { if(mounted) Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro PDF: $e"))); }
   }
 
-  // --- RELATÓRIO ANUAL ---
+  // --- RELATÓRIO ANUAL (CORRIGIDO COM CORES) ---
   Future<void> _mostrarRelatorioAnual() async {
      int ano = _mesAtual.year;
      DateTime inicio = DateTime(ano, 1, 1);
@@ -435,9 +486,47 @@ class _FinanceScreenState extends State<FinanceScreen> {
        var snap = await FirebaseFirestore.instance.collection('financas').where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(inicio)).where('data', isLessThanOrEqualTo: Timestamp.fromDate(fim)).get();
        double ent = 0, sai = 0;
        for(var doc in snap.docs) { if(doc['tipo']=='entrada') ent += (doc['valor']??0); else sai += (doc['valor']??0); }
-       if(mounted) Navigator.pop(context);
-       if(mounted) showDialog(context: context, builder: (ctx) => AlertDialog(title: Text("Resumo $ano"), content: Text("Entradas: $ent\nSaídas: $sai\nSaldo: ${ent-sai}"), actions: [TextButton(onPressed:()=>Navigator.pop(ctx), child: const Text("OK"))]));
+       double saldo = ent - sai;
+
+       if(mounted) Navigator.pop(context); // Fecha loading
+       
+       if(mounted) {
+         showDialog(
+           context: context, 
+           builder: (ctx) => AlertDialog(
+             title: Text("Resumo $ano"), 
+             content: Column(
+               mainAxisSize: MainAxisSize.min,
+               crossAxisAlignment: CrossAxisAlignment.start,
+               children: [
+                 _buildSummaryRow("Entradas", ent, Colors.green),
+                 const SizedBox(height: 10),
+                 _buildSummaryRow("Saídas", sai, Colors.red),
+                 const Divider(height: 20),
+                 _buildSummaryRow("Saldo", saldo, Colors.blue[800]!),
+               ],
+             ), 
+             actions: [
+               TextButton(onPressed:()=>Navigator.pop(ctx), child: const Text("OK"))
+             ]
+           )
+         );
+       }
      } catch(e) { if(mounted) Navigator.pop(context); }
+  }
+
+  // Helper para as linhas do resumo anual
+  Widget _buildSummaryRow(String label, double value, Color color) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(fontSize: 16, color: Colors.grey[700])),
+        Text(
+          NumberFormat.simpleCurrency(locale: 'pt_BR').format(value),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)
+        ),
+      ],
+    );
   }
 
   // --- WIDGETS AUXILIARES ---
@@ -470,12 +559,108 @@ class _FinanceScreenState extends State<FinanceScreen> {
     );
   }
 
+  // --- TELA ESPECIAL PARA MEMBROS (VISUALIZAÇÃO DIRETA) ---
+  Widget _buildMemberView() {
+    const String pixKey = "30057670000105"; 
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.handshake, size: 60, color: Colors.green),
+          const SizedBox(height: 10),
+          const Text(
+            "Contribuição",
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
+          ),
+          const Text(
+            "Dízimos e Ofertas",
+            style: TextStyle(fontSize: 16, color: Colors.black54),
+          ),
+          const SizedBox(height: 20),
+
+          // CARTÃO DE DADOS BANCÁRIOS
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  const Text("Chave PIX (CNPJ):", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!)
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(child: Text(pixKey, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87))),
+                        IconButton(
+                          icon: const Icon(Icons.copy, color: Colors.blue),
+                          tooltip: "Copiar PIX",
+                          onPressed: () {
+                            Clipboard.setData(const ClipboardData(text: pixKey));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Chave PIX copiada!"), backgroundColor: Colors.green),
+                            );
+                          },
+                        )
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 20),
+                  const Text("Ou escaneie o QR Code:", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 10),
+                  
+                  // QR CODE IMAGEM
+                  Image.asset(
+                    'assets/images/qrcode_pix.png', 
+                    height: 200,
+                    errorBuilder: (context, error, stackTrace) => Column(
+                      children: const [
+                        Icon(Icons.qr_code_2, size: 80, color: Colors.grey),
+                        Text("QR Code não encontrado", style: TextStyle(fontSize: 10))
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 30),
+          
+          // VERSÍCULO
+          const Text(
+            "\"Cada um contribua segundo propôs no seu coração; não com tristeza, ou por necessidade; porque Deus ama ao que dá com alegria.\"",
+            textAlign: TextAlign.center,
+            style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey, fontSize: 14),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            "2 Coríntios 9:7",
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoadingRole) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     bool isFinanceiro = _userRole == 'financeiro';
     bool isAdmin = _userRole == 'admin';
-    if (!isFinanceiro && !isAdmin) return Scaffold(appBar: AppBar(title: const Text("Financeiro"), backgroundColor: Colors.green[800]), body: const Center(child: Text("Sem acesso.")));
+    bool hasFullAccess = isAdmin || isFinanceiro;
 
     String mesFormatado = DateFormat('MMMM yyyy', 'pt_BR').format(_mesAtual).toUpperCase();
 
@@ -483,96 +668,105 @@ class _FinanceScreenState extends State<FinanceScreen> {
       appBar: AppBar(
         title: const Text("Financeiro", style: TextStyle(color: Colors.white)), backgroundColor: Colors.green[800], iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          if (isAdmin || isFinanceiro) IconButton(icon: const Icon(Icons.analytics_outlined), onPressed: _mostrarRelatorioAnual),
+          // Ícone do Banco visível para TODOS
+          if (hasFullAccess) IconButton(icon: const Icon(Icons.pix), onPressed: _exibirDadosBancarios, tooltip: "Dados PIX"),
+          
+          if (hasFullAccess) IconButton(icon: const Icon(Icons.analytics_outlined), onPressed: _mostrarRelatorioAnual),
           if (isFinanceiro) IconButton(icon: const Icon(Icons.picture_as_pdf), onPressed: _gerarPdfMensal),
           const SizedBox(width: 10),
         ],
       ),
       backgroundColor: Colors.grey[100],
-      body: Column(
-        children: [
-          Container(
-            color: Colors.green[800], padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white70), onPressed: () => _trocarMes(-1)), Text(mesFormatado, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)), IconButton(icon: const Icon(Icons.arrow_forward_ios, color: Colors.white70), onPressed: () => _trocarMes(1))]),
-          ),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('financas').where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(_getInicioMes())).where('data', isLessThanOrEqualTo: Timestamp.fromDate(_getFimMes())).orderBy('data', descending: true).snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) return const Center(child: Text("Erro ao carregar dados."));
-                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                final docs = snapshot.data!.docs;
-                
-                double totalEntrada = 0, totalSaida = 0, totalDizimo = 0, totalOferta = 0, totalEBD = 0, totalOutros = 0;
-                for (var doc in docs) {
-                  final d = doc.data() as Map<String, dynamic>;
-                  double v = (d['valor'] ?? 0).toDouble();
-                  if (d['tipo'] == 'entrada') {
-                    totalEntrada += v;
-                    if (d['categoria'] == 'Dízimo') totalDizimo += v; else if (d['categoria'] == 'Oferta') totalOferta += v; else if (d['categoria'] == 'EBD') totalEBD += v; else totalOutros += v;
-                  } else { totalSaida += v; }
-                }
-                double saldo = totalEntrada - totalSaida;
+      
+      // SE FOR MEMBRO, MOSTRA TELA SIMPLIFICADA COM DADOS BANCÁRIOS DIRETO
+      // SE FOR ADMIN/FINANCEIRO, MOSTRA O DASHBOARD
+      body: hasFullAccess 
+        ? Column(
+            children: [
+              Container(
+                color: Colors.green[800], padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white70), onPressed: () => _trocarMes(-1)), Text(mesFormatado, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)), IconButton(icon: const Icon(Icons.arrow_forward_ios, color: Colors.white70), onPressed: () => _trocarMes(1))]),
+              ),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection('financas').where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(_getInicioMes())).where('data', isLessThanOrEqualTo: Timestamp.fromDate(_getFimMes())).orderBy('data', descending: true).snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) return const Center(child: Text("Erro ao carregar dados."));
+                    if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                    final docs = snapshot.data!.docs;
+                    
+                    double totalEntrada = 0, totalSaida = 0, totalDizimo = 0, totalOferta = 0, totalEBD = 0, totalOutros = 0;
+                    for (var doc in docs) {
+                      final d = doc.data() as Map<String, dynamic>;
+                      double v = (d['valor'] ?? 0).toDouble();
+                      if (d['tipo'] == 'entrada') {
+                        totalEntrada += v;
+                        if (d['categoria'] == 'Dízimo') totalDizimo += v; else if (d['categoria'] == 'Oferta') totalOferta += v; else if (d['categoria'] == 'EBD') totalEBD += v; else totalOutros += v;
+                      } else { totalSaida += v; }
+                    }
+                    double saldo = totalEntrada - totalSaida;
 
-                if (isAdmin) {
-                  return SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(children: [_buildSaldoCard(totalEntrada, totalSaida, saldo), const SizedBox(height: 20), GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), childAspectRatio: 1.5, crossAxisSpacing: 10, mainAxisSpacing: 10, children: [_buildDashCard("Dízimos", totalDizimo, Colors.green), _buildDashCard("Ofertas", totalOferta, Colors.lightGreen), _buildDashCard("EBD", totalEBD, Colors.teal), _buildDashCard("Outros", totalOutros, Colors.blueGrey)]), const SizedBox(height: 20), _buildDashCard("Total Saídas", totalSaida, Colors.red, isWide: true)]));
-                }
+                    if (isAdmin) {
+                      return SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(children: [_buildSaldoCard(totalEntrada, totalSaida, saldo), const SizedBox(height: 20), GridView.count(crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), childAspectRatio: 1.5, crossAxisSpacing: 10, mainAxisSpacing: 10, children: [_buildDashCard("Dízimos", totalDizimo, Colors.green), _buildDashCard("Ofertas", totalOferta, Colors.lightGreen), _buildDashCard("EBD", totalEBD, Colors.teal), _buildDashCard("Outros", totalOutros, Colors.blueGrey)]), const SizedBox(height: 20), _buildDashCard("Total Saídas", totalSaida, Colors.red, isWide: true)]));
+                    }
 
-                return Column(
-                  children: [
-                    Transform.translate(offset: const Offset(0, -25), child: _buildSaldoCard(totalEntrada, totalSaida, saldo)),
-                    Expanded(
-                      child: docs.isEmpty ? const Center(child: Text("Nenhum lançamento.")) : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 10), itemCount: docs.length,
-                        itemBuilder: (context, index) {
-                          final data = docs[index].data() as Map<String, dynamic>;
-                          final id = docs[index].id;
-                          bool isEntrada = data['tipo'] == 'entrada';
-                          bool temComprovante = data['comprovante_url'] != null && data['comprovante_url'].toString().isNotEmpty;
+                    return Column(
+                      children: [
+                        Transform.translate(offset: const Offset(0, -25), child: _buildSaldoCard(totalEntrada, totalSaida, saldo)),
+                        Expanded(
+                          child: docs.isEmpty ? const Center(child: Text("Nenhum lançamento.")) : ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 10), itemCount: docs.length,
+                            itemBuilder: (context, index) {
+                              final data = docs[index].data() as Map<String, dynamic>;
+                              final id = docs[index].id;
+                              bool isEntrada = data['tipo'] == 'entrada';
+                              bool temComprovante = data['comprovante_url'] != null && data['comprovante_url'].toString().isNotEmpty;
 
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 8), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            child: ListTile(
-                              leading: CircleAvatar(backgroundColor: isEntrada ? Colors.green[50] : Colors.red[50], child: Icon(isEntrada ? Icons.arrow_upward : Icons.arrow_downward, color: isEntrada ? Colors.green : Colors.red, size: 20)),
-                              title: Text(data['categoria']??"", style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Row(
-                                children: [
-                                  Text(DateFormat('dd/MM').format((data['data'] as Timestamp).toDate())),
-                                  if (data['nome'] != null) Text(" - ${data['nome']}"),
-                                  if (temComprovante) ...[const SizedBox(width: 5), const Icon(Icons.attach_file, size: 14, color: Colors.blue)]
-                                ],
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text((isEntrada ? "+ " : "- ") + NumberFormat.simpleCurrency(locale: 'pt_BR').format(data['valor']), style: TextStyle(color: isEntrada ? Colors.green[700] : Colors.red[700], fontWeight: FontWeight.bold)),
-                                  PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
-                                    onSelected: (v) {
-                                      if (v == 'edit') _showFormDialog(docId: id, data: data);
-                                      if (v == 'delete') _excluirTransacao(id, data['comprovante_url']);
-                                      if (v == 'view' && temComprovante) _verComprovante(data['comprovante_url']);
-                                    },
-                                    itemBuilder: (ctx) => [
-                                      if (temComprovante) const PopupMenuItem(value: 'view', child: Text("Ver Comprovante")),
-                                      const PopupMenuItem(value: 'edit', child: Text("Editar")),
-                                      const PopupMenuItem(value: 'delete', child: Text("Excluir", style: TextStyle(color: Colors.red))),
-                                    ]
-                                  )
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                child: ListTile(
+                                  leading: CircleAvatar(backgroundColor: isEntrada ? Colors.green[50] : Colors.red[50], child: Icon(isEntrada ? Icons.arrow_upward : Icons.arrow_downward, color: isEntrada ? Colors.green : Colors.red, size: 20)),
+                                  title: Text(data['categoria']??"", style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Row(
+                                    children: [
+                                      Text(DateFormat('dd/MM').format((data['data'] as Timestamp).toDate())),
+                                      if (data['nome'] != null) Text(" - ${data['nome']}"),
+                                      if (temComprovante) ...[const SizedBox(width: 5), const Icon(Icons.attach_file, size: 14, color: Colors.blue)]
+                                    ],
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text((isEntrada ? "+ " : "- ") + NumberFormat.simpleCurrency(locale: 'pt_BR').format(data['valor']), style: TextStyle(color: isEntrada ? Colors.green[700] : Colors.red[700], fontWeight: FontWeight.bold)),
+                                      PopupMenuButton<String>(
+                                        icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
+                                        onSelected: (v) {
+                                          if (v == 'edit') _showFormDialog(docId: id, data: data);
+                                          if (v == 'delete') _excluirTransacao(id, data['comprovante_url']);
+                                          if (v == 'view' && temComprovante) _verComprovante(data['comprovante_url']);
+                                        },
+                                        itemBuilder: (ctx) => [
+                                          if (temComprovante) const PopupMenuItem(value: 'view', child: Text("Ver Comprovante")),
+                                          const PopupMenuItem(value: 'edit', child: Text("Editar")),
+                                          const PopupMenuItem(value: 'delete', child: Text("Excluir", style: TextStyle(color: Colors.red))),
+                                        ]
+                                      )
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          )
+        : _buildMemberView(), // VIEW PARA MEMBROS
+
       floatingActionButton: (isFinanceiro) ? FloatingActionButton(backgroundColor: Colors.green[800], onPressed: () => _showFormDialog(), child: const Icon(Icons.add, color: Colors.white)) : null,
     );
   }

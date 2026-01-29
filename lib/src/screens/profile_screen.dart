@@ -38,7 +38,6 @@ class ProfileScreen extends StatelessWidget {
       }
     }
 
-    // 1. DADOS PESSOAIS
     add("NOME", 'nome_completo');
     add("CPF", 'cpf');
     add("RG", 'rg'); 
@@ -49,13 +48,11 @@ class ProfileScreen extends StatelessWidget {
     add("PROFISSAO", 'profissao');
     add("ESCOLARIDADE", 'escolaridade');
     
-    // 2. FILIAÇÃO
     if (get('pai').isNotEmpty) add("PAI", 'pai');
     if (get('mae').isNotEmpty) add("MÃE", 'mae');
 
     qrBuffer.writeln("--------------------------------");
 
-    // 3. CONTATO E ENDEREÇO
     String endereco = get('endereco');
     String numero = get('numero');
     if (endereco.isNotEmpty) {
@@ -69,15 +66,13 @@ class ProfileScreen extends StatelessWidget {
 
     qrBuffer.writeln("--------------------------------");
 
-    // 4. DADOS ECLESIÁSTICOS
     add("CARGO", 'cargo_atual');
     add("DEPARTAMENTO", 'departamento');
-    add("SITUAÇÃO", 'situacao'); // Ativo/Inativo
+    add("SITUAÇÃO", 'situacao'); 
     add("MEMBRO DESDE", 'membro_desde');
     add("BATISMO", 'batismo_aguas');
     if(get('oficial_igreja') != "NENHUM") add("OFICIAL", 'oficial_igreja');
 
-    // 5. FAMÍLIA
     add("CÔNJUGE", 'conjuge');
     add("FILHOS", 'filhos');
     
@@ -87,7 +82,7 @@ class ProfileScreen extends StatelessWidget {
     return qrBuffer.toString();
   }
 
-  // --- FUNÇÃO GERAR PDF ---
+  // --- FUNÇÃO GERAR PDF (CARTEIRINHA PARA IMPRESSÃO) ---
   Future<void> _generatePdf(BuildContext context, Map<String, dynamic> data, String uid) async {
     final pdf = pw.Document();
     final logoImage = await imageFromAssetBundle('assets/images/logo.png');
@@ -101,26 +96,15 @@ class ProfileScreen extends StatelessWidget {
       }
     }
 
-    // Prepara dados visuais
     String get(String key) => (data[key] ?? "").toString().toUpperCase();
-    String nome = get('nome_completo');
-    List<String> partes = nome.split(' ');
-    String nomeCurto = partes.isNotEmpty ? partes[0] : "";
-    if (partes.length > 1) nomeCurto += " ${partes.last}";
+    
+    // --- ALTERAÇÃO: Nome completo sem cortes para o PDF ---
+    String nomeCompleto = get('nome_completo');
 
-    // --- MUDANÇA 1: LÓGICA DO CARGO NO PDF ---
     String oficial = get('oficial_igreja');
-    String cargo;
-    if (oficial.isNotEmpty && oficial != "NENHUM") {
-      cargo = oficial; // Prioridade para oficial
-    } else {
-      cargo = get('cargo_atual'); // Senão, cargo atual
-    }
-    // ------------------------------------------
+    String cargo = (oficial.isNotEmpty && oficial != "NENHUM") ? oficial : get('cargo_atual');
 
     String membroDesde = get('membro_desde');
-
-    // GERA O QR CODE COMPLETO USANDO A FUNÇÃO AUXILIAR
     String qrData = _gerarTextoQrCode(data, uid);
 
     final cardColor = PdfColor.fromInt(0xFF616C7C); 
@@ -195,7 +179,8 @@ class ProfileScreen extends StatelessWidget {
                                         child: pw.Column(
                                           crossAxisAlignment: pw.CrossAxisAlignment.start,
                                           children: [
-                                            pw.Text(nomeCurto, style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 10), maxLines: 2),
+                                            // EXIBIÇÃO DO NOME COMPLETO NO PDF
+                                            pw.Text(nomeCompleto, style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 8), maxLines: 3),
                                             pw.SizedBox(height: 2),
                                             pw.Container(
                                               padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -229,7 +214,7 @@ class ProfileScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // VERSO (QR CODE LIMPO)
+                      // VERSO
                       pw.Container(
                         width: cardWidth, height: cardHeight, color: PdfColors.white,
                         child: pw.Center(
@@ -262,90 +247,143 @@ class ProfileScreen extends StatelessWidget {
   }
 
   // --- CÓDIGO DA INTERFACE ---
-  void _showChangePasswordDialog(BuildContext context) {
-    final currentPasswordController = TextEditingController();
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Scaffold(body: Center(child: Text("Usuário não logado")));
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Alterar Senha"),
-          content: SingleChildScrollView(
+    const Color cardColor = Color.fromARGB(255, 97, 108, 124);
+
+    return Scaffold(
+      backgroundColor: Colors.grey[100], 
+      appBar: AppBar(
+        title: const Text("Minha Carteirinha", style: TextStyle(color: Colors.white)),
+        backgroundColor: cardColor, 
+        elevation: 0,
+        actions: [
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const SizedBox();
+              return IconButton(
+                icon: const Icon(Icons.print, color: Colors.white),
+                tooltip: "Imprimir Carteirinha",
+                onPressed: () {
+                  final data = snapshot.data!.data() as Map<String, dynamic>;
+                  _generatePdf(context, data, user.uid);
+                },
+              );
+            }
+          ),
+          IconButton(icon: const Icon(Icons.logout, color: Colors.white), onPressed: () => _signOut(context))
+        ],
+      ),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) return const Center(child: Text("Erro ao carregar perfil."));
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+
+          final data = snapshot.hasData && snapshot.data!.exists ? snapshot.data!.data() as Map<String, dynamic> : <String, dynamic>{};
+          String get(String key) => (data[key] ?? "").toString();
+
+          // --- ALTERAÇÃO: Nome completo exibido no Cartão Digital do App ---
+          String nomeCompleto = get('nome_completo').isNotEmpty ? get('nome_completo') : (user.email ?? "Membro");
+
+          String fotoUrl = get('foto_url');
+          String oficial = get('oficial_igreja');
+          String cargoAtual = get('cargo_atual');
+          String cargo = (oficial.isNotEmpty && oficial.toUpperCase() != "NENHUM") 
+              ? oficial 
+              : (cargoAtual.isNotEmpty ? cargoAtual : "Membro");
+          
+          String membroDesde = get('membro_desde');
+          String qrDataString = _gerarTextoQrCode(data, user.uid);
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                const Text("Por segurança, confirme sua senha atual antes de mudar.", style: TextStyle(fontSize: 14, color: Colors.grey)),
+                const SizedBox(height: 10),
+                // CARTÃO DIGITAL
+                Container(
+                  width: double.infinity, height: 220, 
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20), color: cardColor, 
+                    image: const DecorationImage(image: AssetImage('assets/images/logo.png'), fit: BoxFit.contain, alignment: Alignment.centerRight, opacity: 0.15),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              const Text("IGREJA EVANGÉLICA", style: TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 1.5)),
+                              const Text("CONGREGACIONAL", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                              Text("MORENO - PE", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 10)),
+                            ]),
+                            Container(width: 40, height: 40, decoration: const BoxDecoration(color: Colors.white24, shape: BoxShape.circle), padding: const EdgeInsets.all(5), child: Image.asset('assets/images/logo.png')),
+                        ]),
+                        const Spacer(),
+                        Row(children: [
+                            Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: CircleAvatar(radius: 35, backgroundColor: Colors.grey[300], backgroundImage: (fotoUrl.isNotEmpty && fotoUrl != "null") ? NetworkImage(fotoUrl) : null, child: (fotoUrl.isEmpty || fotoUrl == "null") ? const Icon(Icons.person, size: 40, color: Colors.grey) : null)),
+                            const SizedBox(width: 15),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  // NOME COMPLETO EM MAIÚSCULO NO APP
+                                  Text(nomeCompleto.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 4),
+                                  Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(4)), child: Text(cargo.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
+                                  if (membroDesde.isNotEmpty) Text("Membro desde: $membroDesde", style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
+                            ])),
+                        ]),
+                      ],
+                    ),
+                  ),
+                ),
+
                 const SizedBox(height: 20),
-                TextField(
-                  controller: currentPasswordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: "Senha Atual", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock_outline)),
+                // QR CODE
+                Container(
+                  width: double.infinity, padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))]),
+                  child: Column(children: [
+                      const Text("Seu Código de Membro", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
+                      const SizedBox(height: 15),
+                      QrImageView(
+                        data: qrDataString, 
+                        version: QrVersions.auto, 
+                        size: 180.0, 
+                        backgroundColor: Colors.white, 
+                        embeddedImage: const AssetImage('assets/images/logo.png'), 
+                        embeddedImageStyle: const QrEmbeddedImageStyle(size: Size(30, 30))
+                      ),
+                      const SizedBox(height: 10),
+                      Text("ID: ${user.uid.substring(0, 8).toUpperCase()}...", style: const TextStyle(letterSpacing: 2, color: Colors.grey, fontSize: 12)),
+                  ]),
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: newPasswordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: "Nova Senha (Mín 6)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock)),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: confirmPasswordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: "Confirmar Nova Senha", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock)),
-                ),
+                
+                const SizedBox(height: 30),
+                _buildSettingsTile(icon: Icons.person_outline, title: "Meus Dados (Completo)", subtitle: "Visualize sua ficha cadastral", color: cardColor, onTap: () => _showMyDetails(context, data)),
+                _buildSettingsTile(icon: Icons.lock_outline, title: "Alterar Senha", subtitle: "Atualize sua segurança", color: Colors.orange, onTap: () => _showChangePasswordDialog(context)),
+                _buildSettingsTile(icon: Icons.logout, title: "Sair", subtitle: "Deslogar do aplicativo", color: Colors.red, onTap: () => _signOut(context)),
+                
+                const SizedBox(height: 40),
+                Text("Versão 1.0.0", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
               ],
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
-            ElevatedButton(
-              onPressed: () async {
-                if (newPasswordController.text != confirmPasswordController.text) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A nova senha e a confirmação não batem.")));
-                  return;
-                }
-                if (newPasswordController.text.length < 6) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A nova senha deve ter no mínimo 6 dígitos.")));
-                  return;
-                }
-
-                try {
-                  showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
-
-                  final user = FirebaseAuth.instance.currentUser;
-                  final email = user?.email;
-
-                  if (user != null && email != null) {
-                    AuthCredential credential = EmailAuthProvider.credential(email: email, password: currentPasswordController.text);
-                    await user.reauthenticateWithCredential(credential);
-                    await user.updatePassword(newPasswordController.text);
-
-                    if (context.mounted) {
-                      Navigator.pop(context); // Fecha loading
-                      Navigator.pop(context); // Fecha dialog
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Senha alterada com sucesso!"), backgroundColor: Colors.green));
-                    }
-                  }
-                } on FirebaseAuthException catch (e) {
-                  Navigator.pop(context); // Fecha loading
-                  String msg = "Erro ao mudar senha.";
-                  if (e.code == 'wrong-password') msg = "A senha atual está incorreta.";
-                  else if (e.code == 'weak-password') msg = "A nova senha é muito fraca.";
-                  
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
-                }
-              },
-              child: const Text("Salvar"),
-            ),
-          ],
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
-  // --- EXIBIR DETALHES COMPLETOS (BOTTOM SHEET) ---
+  // --- WIDGETS AUXILIARES ---
+  Widget _buildSettingsTile({required IconData icon, required String title, required String subtitle, required Color color, required VoidCallback onTap}) {
+    return Card(margin: const EdgeInsets.symmetric(vertical: 6), elevation: 0, color: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey[200]!)), child: ListTile(leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 22)), title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)), subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])), trailing: const Icon(Icons.chevron_right, color: Colors.grey), onTap: onTap));
+  }
+
   void _showMyDetails(BuildContext context, Map<String, dynamic> data) {
     String get(String key) => (data[key] ?? "").toString();
     String nomeDisplay = get('nome_completo').isNotEmpty ? get('nome_completo') : "Membro";
@@ -412,170 +450,68 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const Scaffold(body: Center(child: Text("Usuário não logado")));
+  void _showChangePasswordDialog(BuildContext context) {
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
 
-    const Color cardColor = Color.fromARGB(255, 97, 108, 124);
-
-    return Scaffold(
-      backgroundColor: Colors.grey[100], 
-      appBar: AppBar(
-        title: const Text("Minha Carteirinha", style: TextStyle(color: Colors.white)),
-        backgroundColor: cardColor, 
-        elevation: 0,
-        actions: [
-          StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return const SizedBox();
-              return IconButton(
-                icon: const Icon(Icons.print, color: Colors.white),
-                tooltip: "Imprimir Carteirinha",
-                onPressed: () {
-                  final data = snapshot.data!.data() as Map<String, dynamic>;
-                  _generatePdf(context, data, user.uid);
-                },
-              );
-            }
-          ),
-          IconButton(icon: const Icon(Icons.logout, color: Colors.white), onPressed: () => _signOut(context))
-        ],
-      ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) return const Center(child: Text("Erro ao carregar perfil."));
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-
-          final data = snapshot.hasData && snapshot.data!.exists ? snapshot.data!.data() as Map<String, dynamic> : <String, dynamic>{};
-          
-          String get(String key) => (data[key] ?? "").toString();
-
-          String nome = get('nome_completo').isNotEmpty ? get('nome_completo') : (user.email ?? "Membro");
-          List<String> partesNome = nome.split(' ');
-          String nomeCartao = partesNome[0];
-          if (partesNome.length > 1) nomeCartao += " ${partesNome.last}";
-
-          String fotoUrl = get('foto_url');
-          
-          // --- MUDANÇA 2: LÓGICA DO CARGO NA TELA ---
-          String oficial = get('oficial_igreja');
-          String cargoAtual = get('cargo_atual');
-          
-          // Se tiver oficial e não for NENHUM, mostra oficial. Senão, mostra cargo ou "Membro".
-          String cargo = (oficial.isNotEmpty && oficial.toUpperCase() != "NENHUM") 
-              ? oficial 
-              : (cargoAtual.isNotEmpty ? cargoAtual : "Membro");
-          // -------------------------------------------
-          
-          String membroDesde = get('membro_desde');
-          
-          // GERA O QR CODE COMPLETO NA TELA TAMBÉM
-          String qrDataString = _gerarTextoQrCode(data, user.uid);
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Alterar Senha"),
+          content: SingleChildScrollView(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox(height: 10),
-                // CARTÃO DIGITAL (AZUL)
-                Container(
-                  width: double.infinity, height: 220, 
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20), color: cardColor, 
-                    image: const DecorationImage(image: AssetImage('assets/images/logo.png'), fit: BoxFit.contain, alignment: Alignment.centerRight, opacity: 0.15),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
-                  ),
-                  child: Stack(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  const Text("IGREJA EVANGÉLICA", style: TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 1.5)),
-                                  const Text("CONGREGACIONAL", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                                  Text("MORENO - PE", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 10)),
-                                ]),
-                                Container(width: 40, height: 40, decoration: const BoxDecoration(color: Colors.white24, shape: BoxShape.circle), padding: const EdgeInsets.all(5), child: Image.asset('assets/images/logo.png')),
-                            ]),
-                            const Spacer(),
-                            Row(children: [
-                                Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: CircleAvatar(radius: 35, backgroundColor: Colors.grey[300], backgroundImage: (fotoUrl.isNotEmpty && fotoUrl != "null") ? NetworkImage(fotoUrl) : null, child: (fotoUrl.isEmpty || fotoUrl == "null") ? const Icon(Icons.person, size: 40, color: Colors.grey) : null)),
-                                const SizedBox(width: 15),
-                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                      Text(nomeCartao.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                      const SizedBox(height: 4),
-                                      Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(4)), child: Text(cargo.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
-                                      if (membroDesde.isNotEmpty) Text("Membro desde: $membroDesde", style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
-                                ])),
-                            ]),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
+                const Text("Por segurança, confirme sua senha atual antes de mudar.", style: TextStyle(fontSize: 14, color: Colors.grey)),
                 const SizedBox(height: 20),
-                // QR CODE DIGITAL
-                Container(
-                  width: double.infinity, padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))]),
-                  child: Column(children: [
-                      const Text("Seu Código de Membro", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
-                      const SizedBox(height: 15),
-                      QrImageView(
-                        data: qrDataString, 
-                        version: QrVersions.auto, 
-                        size: 180.0, 
-                        backgroundColor: Colors.white, 
-                        embeddedImage: const AssetImage('assets/images/logo.png'), 
-                        embeddedImageStyle: const QrEmbeddedImageStyle(size: Size(30, 30))
-                      ),
-                      const SizedBox(height: 10),
-                      Text("ID: ${user.uid.substring(0, 8).toUpperCase()}...", style: const TextStyle(letterSpacing: 2, color: Colors.grey, fontSize: 12)),
-                  ]),
-                ),
-                
-                const SizedBox(height: 30),
-                _buildSettingsTile(
-                  icon: Icons.person_outline, 
-                  title: "Meus Dados (Completo)", 
-                  subtitle: "Visualize sua ficha cadastral", 
-                  color: cardColor, 
-                  onTap: () => _showMyDetails(context, data)
-                ),
-                _buildSettingsTile(
-                  icon: Icons.lock_outline,
-                  title: "Alterar Senha",
-                  subtitle: "Atualize sua segurança",
-                  color: Colors.orange,
-                  onTap: () => _showChangePasswordDialog(context),
-                ),
-                _buildSettingsTile(
-                  icon: Icons.logout,
-                  title: "Sair",
-                  subtitle: "Deslogar do aplicativo",
-                  color: Colors.red,
-                  onTap: () => _signOut(context),
-                ),
-                
-                const SizedBox(height: 40),
-                Text("Versão 1.0.0", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                TextField(controller: currentPasswordController, obscureText: true, decoration: const InputDecoration(labelText: "Senha Atual", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock_outline))),
+                const SizedBox(height: 10),
+                TextField(controller: newPasswordController, obscureText: true, decoration: const InputDecoration(labelText: "Nova Senha (Mín 6)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock))),
+                const SizedBox(height: 10),
+                TextField(controller: confirmPasswordController, obscureText: true, decoration: const InputDecoration(labelText: "Confirmar Nova Senha", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock))),
               ],
             ),
-          );
-        },
-      ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+            ElevatedButton(
+              onPressed: () async {
+                if (newPasswordController.text != confirmPasswordController.text) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A nova senha e a confirmação não batem.")));
+                  return;
+                }
+                if (newPasswordController.text.length < 6) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A nova senha deve ter no mínimo 6 dígitos.")));
+                  return;
+                }
+                try {
+                  showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
+                  final user = FirebaseAuth.instance.currentUser;
+                  final email = user?.email;
+                  if (user != null && email != null) {
+                    AuthCredential credential = EmailAuthProvider.credential(email: email, password: currentPasswordController.text);
+                    await user.reauthenticateWithCredential(credential);
+                    await user.updatePassword(newPasswordController.text);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Senha alterada com sucesso!"), backgroundColor: Colors.green));
+                    }
+                  }
+                } on FirebaseAuthException catch (e) {
+                  Navigator.pop(context);
+                  String msg = "Erro ao mudar senha.";
+                  if (e.code == 'wrong-password') msg = "A senha atual está incorreta.";
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+                }
+              },
+              child: const Text("Salvar"),
+            ),
+          ],
+        );
+      },
     );
-  }
-
-  Widget _buildSettingsTile({required IconData icon, required String title, required String subtitle, required Color color, required VoidCallback onTap}) {
-    return Card(margin: const EdgeInsets.symmetric(vertical: 6), elevation: 0, color: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey[200]!)), child: ListTile(leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 22)), title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)), subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])), trailing: const Icon(Icons.chevron_right, color: Colors.grey), onTap: onTap));
   }
 }

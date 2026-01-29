@@ -14,6 +14,14 @@ class MembersScreen extends StatefulWidget {
 class _MembersScreenState extends State<MembersScreen> {
   String _searchText = "";
 
+  // --- FUNÇÃO AUXILIAR: PEGAR NOME E SOBRENOME ---
+  String _obterNomeSobrenome(String nomeCompleto) {
+    if (nomeCompleto.trim().isEmpty) return "Sem Nome";
+    List<String> partes = nomeCompleto.trim().split(' ');
+    if (partes.length <= 1) return partes[0];
+    return "${partes.first} ${partes.last}";
+  }
+
   // --- FUNÇÕES UTILITÁRIAS ---
   void _editMember(String docId, Map<String, dynamic> data) {
     Navigator.push(context, MaterialPageRoute(builder: (context) => AdminRegisterScreen(memberId: docId, memberData: data)));
@@ -189,10 +197,6 @@ class _MembersScreenState extends State<MembersScreen> {
                   children: [
                     _buildSectionTitle("Informações Públicas"),
                     
-                    // Se não tiver apelido, não mostra campo extra. Se tiver, já está no título.
-                    // Mas se quiser reforçar, pode descomentar a linha abaixo:
-                    // if (apelido.isNotEmpty) _buildRow(Icons.face, "Apelido", apelido),
-
                     _buildRow(Icons.cake, "Nascimento", get('nascimento')),
                     _buildRow(Icons.bloodtype, "Tipo Sanguíneo", get('grupo_sanguineo')), 
                     _buildRow(Icons.star, "Cargo Eclesiástico", get('cargo_atual')),
@@ -372,8 +376,8 @@ class _MembersScreenState extends State<MembersScreen> {
                         String nomeCompleto = data['nome_completo'] ?? data['nome'] ?? "Sem Nome";
                         String apelido = data['apelido'] ?? "";
                         
-                        // LÓGICA DE EXIBIÇÃO NO CARD (LISTA)
-                        String nomeExibicao = apelido.isNotEmpty ? apelido : nomeCompleto;
+                        // --- ALTERAÇÃO: EXIBIÇÃO DO NOME E SOBRENOME ---
+                        String nomeExibicao = apelido.isNotEmpty ? apelido : _obterNomeSobrenome(nomeCompleto);
 
                         String cargo = data['cargo_atual'] ?? data['role'] ?? "-";
                         String oficial = data['oficial_igreja'] ?? "NENHUM";
@@ -439,7 +443,6 @@ class _MembersScreenState extends State<MembersScreen> {
                                           right: -4,
                                           top: -4,
                                           child: GestureDetector(
-                                            // Usando apelido ou primeiro nome na mensagem rápida também
                                             onTap: () => _openWhatsApp(whatsapp, message: "Paz do Senhor, ${apelido.isNotEmpty ? apelido : nomeCompleto.split(' ')[0]}! Feliz aniversário! Que Deus te abençoe! 🎉"),
                                             child: Container(
                                               decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4)]),
@@ -495,7 +498,7 @@ class _MembersScreenState extends State<MembersScreen> {
             ],
           ),
         );
-      }
+      },
     );
   }
 

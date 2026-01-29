@@ -4,14 +4,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart'; // Para identificar se é Web
 import 'package:flutter_localizations/flutter_localizations.dart'; 
 
+// Importações das suas telas
 import 'src/screens/home_screen.dart';
 import 'src/screens/login_screen.dart';
+// Importação do serviço de notificação que criamos
+import 'src/services/notification_service.dart'; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 1. Inicializa o Firebase de acordo com a plataforma
   if (kIsWeb) {
-    // --- CONFIGURAÇÃO WEB (COM SEUS DADOS REAIS) ---
     await Firebase.initializeApp(
       options: const FirebaseOptions(
         apiKey: "AIzaSyBWd0S5qU0XtqjaoQPHfDNkjKTjW9BXCqY",
@@ -22,9 +25,12 @@ void main() async {
       ),
     );
   } else {
-    // --- CONFIGURAÇÃO ANDROID (AUTOMÁTICA) ---
     await Firebase.initializeApp();
   }
+
+  // 2. Inicializa as configurações de Push Notification e Tópicos
+  // Isso fará o app pedir permissão e assinar o tópico 'todos' automaticamente
+  await NotificationService().initNotification();
 
   runApp(const MyApp());
 }
@@ -62,17 +68,23 @@ class MyApp extends StatelessWidget {
         ),
       ),
 
+      // Gerenciamento de Estado de Login
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
           }
 
           if (snapshot.hasError) {
-            return const Center(child: Text("Erro ao conectar no sistema"));
+            return const Scaffold(
+              body: Center(child: Text("Erro ao conectar no sistema")),
+            );
           }
 
+          // Se o usuário estiver logado, vai para Home, senão, Login
           if (snapshot.hasData) {
             return const HomeScreen();
           }
