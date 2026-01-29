@@ -1,5 +1,5 @@
 name: iec_app
-description: "A new Flutter project."
+description: "App da Igreja Evangélica Congregacional em Moreno."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -15,9 +15,12 @@ dependencies:
     sdk: flutter
   
   # Internacionalização
-  intl: ^0.20.2
+  intl: ^0.19.0
 
-  # --- FIREBASE (VERSÕES ATUALIZADAS) ---
+  # --- HTTP (ESSENCIAL PARA ENVIAR NOTIFICAÇÕES) ---
+  http: ^1.2.0
+
+  # --- FIREBASE ---
   firebase_core: ^3.8.1
   firebase_auth: ^5.3.4
   cloud_firestore: ^5.5.2
@@ -44,7 +47,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
-  # ADICIONADO: Pacote para gerar ícones
+  # Gerador de ícones
   flutter_launcher_icons: ^0.13.1
 
 flutter:
@@ -55,7 +58,7 @@ flutter:
     - assets/json/hinos.json
     - assets/images/
 
-# --- CONFIGURAÇÃO DO ÍCONE (ADICIONADO AQUI) ---
+# --- CONFIGURAÇÃO DO ÍCONE ---
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
