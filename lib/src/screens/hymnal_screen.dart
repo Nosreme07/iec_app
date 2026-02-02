@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // NECESSÁRIO
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HymnalScreen extends StatefulWidget {
   const HymnalScreen({super.key});
@@ -62,7 +62,7 @@ class _HymnalScreenState extends State<HymnalScreen> {
             .doc(hino['numero'].toString());
 
         batch.set(docRef, {
-          "numero": hino['numero'], // Salva como número ou string, vamos tratar na leitura
+          "numero": hino['numero'],
           "titulo": hino['titulo'],
           "letra": hino['letra'],
         });
@@ -117,7 +117,6 @@ class _HymnalScreenState extends State<HymnalScreen> {
                   icon: const Icon(Icons.cloud_upload),
                   tooltip: "Fazer Upload (JSON)",
                   onPressed: () {
-                     // Confirmação simples
                      _uploadHinosDoJsonParaFirebase();
                   },
                 ),
@@ -146,11 +145,9 @@ class _HymnalScreenState extends State<HymnalScreen> {
               // LISTA DE HINOS
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
-                  // CORREÇÃO: Removemos o .orderBy que causava o erro
                   stream: FirebaseFirestore.instance.collection('hinos').snapshots(),
                   builder: (context, snapshot) {
                     
-                    // MOSTRA O ERRO REAL NA TELA SE HOUVER
                     if (snapshot.hasError) {
                       return Center(child: Text("Erro: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
                     }
@@ -161,14 +158,12 @@ class _HymnalScreenState extends State<HymnalScreen> {
 
                     var docs = snapshot.data!.docs;
                     
-                    // ORDENAÇÃO MANUAL (SEGURA)
-                    // Convertemos para lista para poder ordenar
+                    // ORDENAÇÃO MANUAL
                     var listaHinos = docs.toList();
                     listaHinos.sort((a, b) {
                       var dataA = a.data() as Map<String, dynamic>;
                       var dataB = b.data() as Map<String, dynamic>;
                       
-                      // Força converter para inteiro para ordenar corretamente (1, 2, 10 e não 1, 10, 2)
                       int numA = int.tryParse(dataA['numero'].toString()) ?? 0;
                       int numB = int.tryParse(dataB['numero'].toString()) ?? 0;
                       
@@ -236,6 +231,7 @@ class _HymnalScreenState extends State<HymnalScreen> {
                                     hino: hino,
                                     ehFavorito: ehFavorito,
                                     aoAlternarFavorito: () => _alternarFavorito(numeroStr),
+                                    podeEditar: podeEditar, // PASSA A PERMISSÃO
                                   ),
                                 ),
                               );
@@ -255,13 +251,20 @@ class _HymnalScreenState extends State<HymnalScreen> {
   }
 }
 
-// --- TELA DE LEITURA (COM ZOOM) ---
+// --- TELA DE LEITURA (COM ZOOM E EDIÇÃO) ---
 class HymnDetailScreen extends StatefulWidget {
   final Map<String, dynamic> hino;
   final bool ehFavorito;
   final VoidCallback aoAlternarFavorito;
+  final bool podeEditar;
 
-  const HymnDetailScreen({super.key, required this.hino, required this.ehFavorito, required this.aoAlternarFavorito});
+  const HymnDetailScreen({
+    super.key, 
+    required this.hino, 
+    required this.ehFavorito, 
+    required this.aoAlternarFavorito,
+    required this.podeEditar,
+  });
 
   @override
   State<HymnDetailScreen> createState() => _HymnDetailScreenState();
@@ -270,11 +273,25 @@ class HymnDetailScreen extends StatefulWidget {
 class _HymnDetailScreenState extends State<HymnDetailScreen> {
   double _tamanhoFonte = 18.0;
   late bool _localFavorito;
+  bool _modoEdicao = false;
+  
+  // Controladores para edição
+  late TextEditingController _tituloController;
+  late TextEditingController _letraController;
 
   @override
   void initState() {
     super.initState();
     _localFavorito = widget.ehFavorito;
+    _tituloController = TextEditingController(text: widget.hino['titulo']);
+    _letraController = TextEditingController(text: widget.hino['letra']);
+  }
+
+  @override
+  void dispose() {
+    _tituloController.dispose();
+    _letraController.dispose();
+    super.dispose();
   }
 
   void _cliqueFavorito() {
@@ -282,10 +299,37 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
     setState(() => _localFavorito = !_localFavorito);
   }
 
-  // Função Editar (Opcional, mantida simples)
-  void _editarHino() {
-     // Lógica simplificada para Admin editar se necessário
-     // (Pode copiar a lógica anterior se precisar editar)
+  // SALVAR EDIÇÃO NO FIREBASE
+  Future<void> _salvarEdicao() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('hinos')
+          .doc(widget.hino['id'])
+          .update({
+        'titulo': _tituloController.text,
+        'letra': _letraController.text,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Hino atualizado com sucesso!"),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        setState(() => _modoEdicao = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Erro ao salvar: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -301,10 +345,37 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
             color: _localFavorito ? Colors.redAccent : Colors.white,
             onPressed: _cliqueFavorito,
           ),
+          // BOTÃO DE EDITAR (APENAS PARA ADMIN)
+          if (widget.podeEditar)
+            IconButton(
+              icon: Icon(_modoEdicao ? Icons.check : Icons.edit),
+              tooltip: _modoEdicao ? "Salvar" : "Editar",
+              onPressed: () {
+                if (_modoEdicao) {
+                  _salvarEdicao();
+                } else {
+                  setState(() => _modoEdicao = true);
+                }
+              },
+            ),
+          // BOTÃO CANCELAR (APARECE APENAS EM MODO EDIÇÃO)
+          if (_modoEdicao)
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: "Cancelar",
+              onPressed: () {
+                setState(() {
+                  _modoEdicao = false;
+                  _tituloController.text = widget.hino['titulo'];
+                  _letraController.text = widget.hino['letra'];
+                });
+              },
+            ),
         ],
       ),
       body: Column(
         children: [
+          // CONTROLE DE ZOOM
           Container(
             color: Colors.orange[50],
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -324,33 +395,113 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
               ],
             ),
           ),
+          
+          // CONTEÚDO (MODO LEITURA OU EDIÇÃO)
           Expanded(
             child: Container(
               width: double.infinity,
               color: const Color(0xFFFFF8E7),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    Text(
-                      widget.hino['titulo'],
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: _tamanhoFonte + 4, fontWeight: FontWeight.bold, color: Colors.orange[900], fontFamily: 'Georgia'),
-                    ),
-                    const SizedBox(height: 30),
-                    Text(
-                      widget.hino['letra'],
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: _tamanhoFonte, height: 1.6, fontFamily: 'Georgia', color: Colors.black87),
-                    ),
-                    const SizedBox(height: 40),
-                  ],
-                ),
+                child: _modoEdicao ? _buildModoEdicao() : _buildModoLeitura(),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  // MODO LEITURA
+  Widget _buildModoLeitura() {
+    return Column(
+      children: [
+        Text(
+          widget.hino['titulo'],
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: _tamanhoFonte + 4, 
+            fontWeight: FontWeight.bold, 
+            color: Colors.orange[900], 
+            fontFamily: 'Georgia'
+          ),
+        ),
+        const SizedBox(height: 30),
+        Text(
+          widget.hino['letra'],
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: _tamanhoFonte, 
+            height: 1.6, 
+            fontFamily: 'Georgia', 
+            color: Colors.black87
+          ),
+        ),
+        const SizedBox(height: 40),
+      ],
+    );
+  }
+
+  // MODO EDIÇÃO
+  Widget _buildModoEdicao() {
+    return Column(
+      children: [
+        // CAMPO TÍTULO
+        TextField(
+          controller: _tituloController,
+          style: TextStyle(
+            fontSize: _tamanhoFonte + 4,
+            fontWeight: FontWeight.bold,
+            color: Colors.orange[900],
+            fontFamily: 'Georgia',
+          ),
+          textAlign: TextAlign.center,
+          decoration: const InputDecoration(
+            labelText: 'Título',
+            border: OutlineInputBorder(),
+            filled: true,
+            fillColor: Colors.white,
+          ),
+          maxLines: 2,
+        ),
+        const SizedBox(height: 20),
+        
+        // CAMPO LETRA
+        TextField(
+          controller: _letraController,
+          style: TextStyle(
+            fontSize: _tamanhoFonte,
+            height: 1.6,
+            fontFamily: 'Georgia',
+            color: Colors.black87,
+          ),
+          textAlign: TextAlign.center,
+          decoration: const InputDecoration(
+            labelText: 'Letra do Hino',
+            border: OutlineInputBorder(),
+            filled: true,
+            fillColor: Colors.white,
+            alignLabelWithHint: true,
+          ),
+          maxLines: null,
+          minLines: 10,
+        ),
+        const SizedBox(height: 20),
+        
+        // BOTÃO SALVAR GRANDE
+        ElevatedButton.icon(
+          onPressed: _salvarEdicao,
+          icon: const Icon(Icons.save),
+          label: const Text("Salvar Alterações"),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+        const SizedBox(height: 40),
+      ],
     );
   }
 }

@@ -8,13 +8,13 @@ import 'profile_screen.dart';
 import 'bible_screen.dart';
 import 'hymnal_screen.dart';
 import 'members_screen.dart';
-import 'agenda_screen.dart'; 
-import 'annual_agenda_screen.dart';
+import 'unified_agenda_screen.dart'; 
 import 'scale_screen.dart';
 import 'patrimonio_screen.dart'; 
 import 'finance_screen.dart'; 
 import 'devocional_screen.dart';
-import 'notices_history_screen.dart'; // Tela de Histórico
+import 'notices_history_screen.dart'; 
+import 'liturgia_screen.dart';
 
 // IMPORTS DOS WIDGETS
 import '../widgets/home_notices_widget.dart'; 
@@ -146,14 +146,12 @@ class HomeContent extends StatelessWidget {
                     _buildMenuCard(context, icon: Icons.menu_book, label: "Bíblia", color: Colors.brown, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const BibleScreen()))),
                     _buildMenuCard(context, icon: Icons.library_music, label: "Salmos & Hinos", color: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()))),
                     _buildMenuCard(context, icon: Icons.local_florist, label: "Devocional", color: Colors.pink, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DevocionalScreen()))),
-                    _buildMenuCard(context, icon: Icons.calendar_view_week, label: "Agenda Semanal", color: Colors.blue, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AgendaScreen()))),
-                    _buildMenuCard(context, icon: Icons.calendar_month, label: "Agenda Anual", color: Colors.purple, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AnnualAgendaScreen()))),
+                    _buildMenuCard(context, icon: Icons.calendar_month, label: "Agenda", color: Colors.blue, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UnifiedAgendaScreen()))),
                     _buildMenuCard(context, icon: Icons.view_timeline, label: "Escala", color: Colors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ScaleScreen()))),
                     _buildMenuCard(context, icon: Icons.inventory_2, label: "Patrimônio", color: Colors.blueGrey, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PatrimonioScreen()))),
                     _buildMenuCard(context, icon: Icons.groups, label: "Membros", color: Colors.indigo, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MembersScreen()))),
-
-                    // --- MUDANÇA: O ÍCONE FINANÇAS AGORA APARECE PARA TODOS ---
                     _buildMenuCard(context, icon: Icons.attach_money, label: "Finanças", color: Colors.green[700]!, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()))),
+                    _buildMenuCard(context, icon: Icons.format_list_bulleted, label: "Liturgia", color: Colors.deepOrange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const LiturgiaScreen()))),
                   ],
                 ),
               ),
