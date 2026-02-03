@@ -1,6 +1,11 @@
+import 'dart:io' show File; // Importante: File só será usado em plataformas não-web
+import 'dart:typed_data'; // Essencial para processar imagens na Web
+import 'package:flutter/foundation.dart' show kIsWeb; // Para detectar se é Web
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter/services.dart'; 
 
@@ -20,6 +25,62 @@ class ProfileScreen extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao sair: $e")));
       }
+    }
+  }
+
+  // --- FUNÇÃO PARA ALTERAR FOTO DE PERFIL (OTIMIZADA PARA WEB/IPHONE) ---
+  Future<void> _pickAndUploadImage(BuildContext context, String uid) async {
+    final ImagePicker picker = ImagePicker();
+    
+    // O Safari solicitará permissão automaticamente aqui
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 50, 
+      maxWidth: 400,
+    );
+
+    if (image == null) return;
+
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // Referência para a pasta 'profile_photos' vista no seu Storage
+      Reference ref = FirebaseStorage.instance.ref().child('profile_photos').child('$uid.jpg');
+      
+      if (kIsWeb) {
+        // --- LÓGICA PARA WEB (IPHONE VIA LINK) ---
+        // Na web, lemos o arquivo como bytes
+        Uint8List fileBytes = await image.readAsBytes();
+        await ref.putData(
+          fileBytes, 
+          SettableMetadata(contentType: 'image/jpeg'), // Define o tipo para evitar erro de exibição
+        );
+      } else {
+        // --- LÓGICA PARA APP NATIVO ---
+        File file = File(image.path);
+        await ref.putFile(file);
+      }
+
+      String downloadUrl = await ref.getDownloadURL();
+
+      // Atualiza o Firestore com o link da imagem
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'foto_url': downloadUrl,
+      });
+
+      if (context.mounted) {
+        Navigator.pop(context); // Fecha o loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Foto atualizada com sucesso!"), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) Navigator.pop(context);
+      debugPrint("Erro no upload: $e");
     }
   }
 
@@ -82,7 +143,7 @@ class ProfileScreen extends StatelessWidget {
     return qrBuffer.toString();
   }
 
-  // --- FUNÇÃO GERAR PDF (CARTEIRINHA PARA IMPRESSÃO) ---
+  // --- FUNÇÃO GERAR PDF ---
   Future<void> _generatePdf(BuildContext context, Map<String, dynamic> data, String uid) async {
     final pdf = pw.Document();
     final logoImage = await imageFromAssetBundle('assets/images/logo.png');
@@ -97,13 +158,9 @@ class ProfileScreen extends StatelessWidget {
     }
 
     String get(String key) => (data[key] ?? "").toString().toUpperCase();
-    
-    // --- ALTERAÇÃO: Nome completo sem cortes para o PDF ---
     String nomeCompleto = get('nome_completo');
-
     String oficial = get('oficial_igreja');
     String cargo = (oficial.isNotEmpty && oficial != "NENHUM") ? oficial : get('cargo_atual');
-
     String membroDesde = get('membro_desde');
     String qrData = _gerarTextoQrCode(data, uid);
 
@@ -122,25 +179,16 @@ class ProfileScreen extends StatelessWidget {
                 pw.Text("Recorte nas linhas contínuas e dobre ao meio na linha pontilhada", 
                   style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
                 pw.SizedBox(height: 10),
-
                 pw.Container(
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.black, width: 0.5),
-                  ),
+                  decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black, width: 0.5)),
                   child: pw.Row(
                     mainAxisSize: pw.MainAxisSize.min,
                     children: [
-                      // FRENTE
                       pw.Container(
-                        width: cardWidth,
-                        height: cardHeight,
-                        color: cardColor,
+                        width: cardWidth, height: cardHeight, color: cardColor,
                         child: pw.Stack(
                           children: [
-                            pw.Positioned(
-                              right: -10, bottom: -10,
-                              child: pw.Opacity(opacity: 0.1, child: pw.Image(logoImage, width: 100)),
-                            ),
+                            pw.Positioned(right: -10, bottom: -10, child: pw.Opacity(opacity: 0.1, child: pw.Image(logoImage, width: 100))),
                             pw.Padding(
                               padding: const pw.EdgeInsets.all(12),
                               child: pw.Column(
@@ -165,11 +213,7 @@ class ProfileScreen extends StatelessWidget {
                                     children: [
                                       pw.Container(
                                         width: 45, height: 45,
-                                        decoration: pw.BoxDecoration(
-                                          shape: pw.BoxShape.circle,
-                                          color: PdfColors.grey300,
-                                          border: pw.Border.all(color: PdfColors.white, width: 1.5),
-                                        ),
+                                        decoration: pw.BoxDecoration(shape: pw.BoxShape.circle, color: PdfColors.grey300, border: pw.Border.all(color: PdfColors.white, width: 1.5)),
                                         child: profileImage != null 
                                           ? pw.ClipOval(child: pw.Image(profileImage, fit: pw.BoxFit.cover))
                                           : pw.Center(child: pw.Text("FOTO", style: const pw.TextStyle(fontSize: 6))),
@@ -179,18 +223,13 @@ class ProfileScreen extends StatelessWidget {
                                         child: pw.Column(
                                           crossAxisAlignment: pw.CrossAxisAlignment.start,
                                           children: [
-                                            // EXIBIÇÃO DO NOME COMPLETO NO PDF
-                                            pw.Text(nomeCompleto, style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 8), maxLines: 3),
+                                            pw.Text(nomeCompleto, style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 8), maxLines: 2),
                                             pw.SizedBox(height: 2),
                                             pw.Container(
                                               padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                               decoration: pw.BoxDecoration(color: PdfColors.white, borderRadius: pw.BorderRadius.circular(2)),
                                               child: pw.Text(cargo, style: pw.TextStyle(color: cardColor, fontSize: 6, fontWeight: pw.FontWeight.bold)),
                                             ),
-                                            if (membroDesde != "NULL" && membroDesde.isNotEmpty) ...[
-                                              pw.SizedBox(height: 2),
-                                              pw.Text("Desde: $membroDesde", style: const pw.TextStyle(color: PdfColors.white, fontSize: 6)),
-                                            ]
                                           ],
                                         ),
                                       ),
@@ -202,34 +241,16 @@ class ProfileScreen extends StatelessWidget {
                           ],
                         ),
                       ),
-                      // DOBRA
-                      pw.Container(
-                        width: 1, height: cardHeight,
-                        child: pw.ListView.builder(
-                          direction: pw.Axis.vertical, itemCount: 20,
-                          itemBuilder: (context, index) => pw.Container(
-                            height: 2, width: 1, 
-                            color: index % 2 == 0 ? PdfColors.grey400 : PdfColors.white,
-                            margin: const pw.EdgeInsets.symmetric(vertical: 1)
-                          ),
-                        ),
-                      ),
-                      // VERSO
+                      pw.Container(width: 1, height: cardHeight, color: PdfColors.grey400),
                       pw.Container(
                         width: cardWidth, height: cardHeight, color: PdfColors.white,
                         child: pw.Center(
                           child: pw.Column(
                             mainAxisAlignment: pw.MainAxisAlignment.center,
                             children: [
-                              pw.BarcodeWidget(
-                                barcode: pw.Barcode.qrCode(),
-                                data: qrData,
-                                width: 90, height: 90,
-                                color: PdfColors.black,
-                                drawText: false,
-                              ),
+                              pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: qrData, width: 80, height: 80, drawText: false),
                               pw.SizedBox(height: 5),
-                              pw.Text("Leia o código para ver a ficha completa", style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey700)),
+                              pw.Text("Valide os dados via QR Code", style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey700)),
                             ],
                           ),
                         ),
@@ -246,7 +267,6 @@ class ProfileScreen extends StatelessWidget {
     await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
   }
 
-  // --- CÓDIGO DA INTERFACE ---
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -267,7 +287,6 @@ class ProfileScreen extends StatelessWidget {
               if (!snapshot.hasData) return const SizedBox();
               return IconButton(
                 icon: const Icon(Icons.print, color: Colors.white),
-                tooltip: "Imprimir Carteirinha",
                 onPressed: () {
                   final data = snapshot.data!.data() as Map<String, dynamic>;
                   _generatePdf(context, data, user.uid);
@@ -287,16 +306,11 @@ class ProfileScreen extends StatelessWidget {
           final data = snapshot.hasData && snapshot.data!.exists ? snapshot.data!.data() as Map<String, dynamic> : <String, dynamic>{};
           String get(String key) => (data[key] ?? "").toString();
 
-          // --- ALTERAÇÃO: Nome completo exibido no Cartão Digital do App ---
           String nomeCompleto = get('nome_completo').isNotEmpty ? get('nome_completo') : (user.email ?? "Membro");
-
           String fotoUrl = get('foto_url');
           String oficial = get('oficial_igreja');
           String cargoAtual = get('cargo_atual');
-          String cargo = (oficial.isNotEmpty && oficial.toUpperCase() != "NENHUM") 
-              ? oficial 
-              : (cargoAtual.isNotEmpty ? cargoAtual : "Membro");
-          
+          String cargo = (oficial.isNotEmpty && oficial.toUpperCase() != "NENHUM") ? oficial : (cargoAtual.isNotEmpty ? cargoAtual : "Membro");
           String membroDesde = get('membro_desde');
           String qrDataString = _gerarTextoQrCode(data, user.uid);
 
@@ -305,7 +319,6 @@ class ProfileScreen extends StatelessWidget {
             child: Column(
               children: [
                 const SizedBox(height: 10),
-                // CARTÃO DIGITAL
                 Container(
                   width: double.infinity, height: 220, 
                   decoration: BoxDecoration(
@@ -328,10 +341,17 @@ class ProfileScreen extends StatelessWidget {
                         ]),
                         const Spacer(),
                         Row(children: [
-                            Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: CircleAvatar(radius: 35, backgroundColor: Colors.grey[300], backgroundImage: (fotoUrl.isNotEmpty && fotoUrl != "null") ? NetworkImage(fotoUrl) : null, child: (fotoUrl.isEmpty || fotoUrl == "null") ? const Icon(Icons.person, size: 40, color: Colors.grey) : null)),
+                            Container(
+                              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), 
+                              child: CircleAvatar(
+                                radius: 35, 
+                                backgroundColor: Colors.grey[300], 
+                                backgroundImage: (fotoUrl.isNotEmpty && fotoUrl != "null") ? NetworkImage(fotoUrl) : null, 
+                                child: (fotoUrl.isEmpty || fotoUrl == "null") ? const Icon(Icons.person, size: 40, color: Colors.grey) : null
+                              )
+                            ),
                             const SizedBox(width: 15),
                             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  // NOME COMPLETO EM MAIÚSCULO NO APP
                                   Text(nomeCompleto.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
                                   const SizedBox(height: 4),
                                   Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(4)), child: Text(cargo.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
@@ -342,9 +362,7 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 20),
-                // QR CODE
                 Container(
                   width: double.infinity, padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))]),
@@ -352,23 +370,17 @@ class ProfileScreen extends StatelessWidget {
                       const Text("Seu Código de Membro", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
                       const SizedBox(height: 15),
                       QrImageView(
-                        data: qrDataString, 
-                        version: QrVersions.auto, 
-                        size: 180.0, 
-                        backgroundColor: Colors.white, 
-                        embeddedImage: const AssetImage('assets/images/logo.png'), 
-                        embeddedImageStyle: const QrEmbeddedImageStyle(size: Size(30, 30))
+                        data: qrDataString, version: QrVersions.auto, size: 180.0, backgroundColor: Colors.white, 
+                        embeddedImage: const AssetImage('assets/images/logo.png'), embeddedImageStyle: const QrEmbeddedImageStyle(size: Size(30, 30))
                       ),
                       const SizedBox(height: 10),
                       Text("ID: ${user.uid.substring(0, 8).toUpperCase()}...", style: const TextStyle(letterSpacing: 2, color: Colors.grey, fontSize: 12)),
                   ]),
                 ),
-                
                 const SizedBox(height: 30),
-                _buildSettingsTile(icon: Icons.person_outline, title: "Meus Dados (Completo)", subtitle: "Visualize sua ficha cadastral", color: cardColor, onTap: () => _showMyDetails(context, data)),
+                _buildSettingsTile(icon: Icons.person_outline, title: "Meus Dados (Completo)", subtitle: "Visualize e altere sua foto", color: cardColor, onTap: () => _showMyDetails(context, data)),
                 _buildSettingsTile(icon: Icons.lock_outline, title: "Alterar Senha", subtitle: "Atualize sua segurança", color: Colors.orange, onTap: () => _showChangePasswordDialog(context)),
                 _buildSettingsTile(icon: Icons.logout, title: "Sair", subtitle: "Deslogar do aplicativo", color: Colors.red, onTap: () => _signOut(context)),
-                
                 const SizedBox(height: 40),
                 Text("Versão 1.0.0", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
               ],
@@ -379,7 +391,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // --- WIDGETS AUXILIARES ---
   Widget _buildSettingsTile({required IconData icon, required String title, required String subtitle, required Color color, required VoidCallback onTap}) {
     return Card(margin: const EdgeInsets.symmetric(vertical: 6), elevation: 0, color: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey[200]!)), child: ListTile(leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 22)), title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)), subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])), trailing: const Icon(Icons.chevron_right, color: Colors.grey), onTap: onTap));
   }
@@ -407,15 +418,38 @@ class ProfileScreen extends StatelessWidget {
             children: [
               Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 20),
-              CircleAvatar(radius: 50, backgroundColor: headerColor.withOpacity(0.2), backgroundImage: (fotoUrl != null && fotoUrl.isNotEmpty) ? NetworkImage(fotoUrl) : null, child: (fotoUrl == null || fotoUrl.isEmpty) ? const Icon(Icons.person, size: 60, color: headerColor) : null),
+              Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      _pickAndUploadImage(context, FirebaseAuth.instance.currentUser!.uid);
+                      Navigator.pop(context); 
+                    },
+                    child: CircleAvatar(
+                      radius: 50, 
+                      backgroundColor: headerColor.withOpacity(0.2), 
+                      backgroundImage: (fotoUrl != null && fotoUrl.isNotEmpty) ? NetworkImage(fotoUrl) : null, 
+                      child: (fotoUrl == null || fotoUrl.isEmpty) ? const Icon(Icons.person, size: 60, color: headerColor) : null
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(color: headerColor, shape: BoxShape.circle),
+                    child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                  )
+                ],
+              ),
               const SizedBox(height: 10),
               Text(nomeDisplay, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+              const Text("Toque na foto para alterar", style: TextStyle(fontSize: 12, color: Colors.grey)),
               const SizedBox(height: 20), const Divider(),
               Expanded(
                 child: ListView(
                   children: [
                     section("Dados Pessoais"),
                     buildRow(Icons.badge, "CPF", get('cpf')),
+                    buildRow(Icons.badge, "RG", get('rg')),
                     buildRow(Icons.cake, "Nascimento", get('nascimento')),
                     buildRow(Icons.bloodtype, "Sangue", get('grupo_sanguineo')),
                     buildRow(Icons.face, "Sexo", get('sexo')),
@@ -436,10 +470,6 @@ class ProfileScreen extends StatelessWidget {
                     buildRow(Icons.groups, "Departamento", get('departamento')),
                     buildRow(Icons.church, "Membro Desde", get('membro_desde')),
                     buildRow(Icons.water_drop, "Batismo", get('batismo_aguas')),
-                    section("Família"),
-                    buildRow(Icons.favorite, "Estado Civil", get('estado_civil')),
-                    buildRow(Icons.person_add, "Cônjuge", get('conjuge')),
-                    if (get('filhos').isNotEmpty) ...[const SizedBox(height: 5), const Text("Filhos:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)), Text(get('filhos'), style: const TextStyle(fontSize: 14))],
                   ],
                 ),
               ),
@@ -464,13 +494,13 @@ class ProfileScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text("Por segurança, confirme sua senha atual antes de mudar.", style: TextStyle(fontSize: 14, color: Colors.grey)),
+                const Text("Por segurança, confirme sua senha atual.", style: TextStyle(fontSize: 14, color: Colors.grey)),
                 const SizedBox(height: 20),
-                TextField(controller: currentPasswordController, obscureText: true, decoration: const InputDecoration(labelText: "Senha Atual", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock_outline))),
+                TextField(controller: currentPasswordController, obscureText: true, decoration: const InputDecoration(labelText: "Senha Atual", border: OutlineInputBorder())),
                 const SizedBox(height: 10),
-                TextField(controller: newPasswordController, obscureText: true, decoration: const InputDecoration(labelText: "Nova Senha (Mín 6)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock))),
+                TextField(controller: newPasswordController, obscureText: true, decoration: const InputDecoration(labelText: "Nova Senha", border: OutlineInputBorder())),
                 const SizedBox(height: 10),
-                TextField(controller: confirmPasswordController, obscureText: true, decoration: const InputDecoration(labelText: "Confirmar Nova Senha", border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock))),
+                TextField(controller: confirmPasswordController, obscureText: true, decoration: const InputDecoration(labelText: "Confirmar Nova Senha", border: OutlineInputBorder())),
               ],
             ),
           ),
@@ -478,36 +508,18 @@ class ProfileScreen extends StatelessWidget {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
             ElevatedButton(
               onPressed: () async {
-                if (newPasswordController.text != confirmPasswordController.text) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A nova senha e a confirmação não batem.")));
-                  return;
-                }
-                if (newPasswordController.text.length < 6) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A nova senha deve ter no mínimo 6 dígitos.")));
-                  return;
-                }
+                if (newPasswordController.text != confirmPasswordController.text) return;
                 try {
-                  showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
                   final user = FirebaseAuth.instance.currentUser;
-                  final email = user?.email;
-                  if (user != null && email != null) {
-                    AuthCredential credential = EmailAuthProvider.credential(email: email, password: currentPasswordController.text);
-                    await user.reauthenticateWithCredential(credential);
-                    await user.updatePassword(newPasswordController.text);
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Senha alterada com sucesso!"), backgroundColor: Colors.green));
-                    }
-                  }
-                } on FirebaseAuthException catch (e) {
+                  AuthCredential cred = EmailAuthProvider.credential(email: user!.email!, password: currentPasswordController.text);
+                  await user.reauthenticateWithCredential(cred);
+                  await user.updatePassword(newPasswordController.text);
                   Navigator.pop(context);
-                  String msg = "Erro ao mudar senha.";
-                  if (e.code == 'wrong-password') msg = "A senha atual está incorreta.";
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+                } catch (e) {
+                  debugPrint(e.toString());
                 }
-              },
-              child: const Text("Salvar"),
+              }, 
+              child: const Text("Salvar")
             ),
           ],
         );

@@ -8,7 +8,7 @@ plugins {
 android {
     // Namespace deve coincidir com o seu applicationId
     namespace = "com.example.iec_app"
-    compileSdk = 35 // Recomendado 35 para estabilidade atual, ou 36 se já tiver o SDK instalado
+    compileSdk = 36 // Recomendado 35 para estabilidade atual, ou 36 se já tiver o SDK instalado
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
