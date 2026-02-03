@@ -111,8 +111,7 @@ class HomeContent extends StatelessWidget {
       stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
       builder: (context, snapshot) {
         
-        // A variável role continua útil para outras lógicas se precisar
-        String role = 'membro';
+        String role = 'membro'; // Padrão se não carregar
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>;
           role = data['role'] ?? 'membro';
@@ -143,14 +142,30 @@ class HomeContent extends StatelessWidget {
                   mainAxisSpacing: 10,
                   childAspectRatio: 0.85,
                   children: [
+                    // ITENS PÚBLICOS (TODOS VEEM)
                     _buildMenuCard(context, icon: Icons.menu_book, label: "Bíblia", color: Colors.brown, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const BibleScreen()))),
                     _buildMenuCard(context, icon: Icons.library_music, label: "Salmos & Hinos", color: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()))),
                     _buildMenuCard(context, icon: Icons.local_florist, label: "Devocional", color: Colors.pink, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DevocionalScreen()))),
                     _buildMenuCard(context, icon: Icons.calendar_month, label: "Agenda", color: Colors.blue, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UnifiedAgendaScreen()))),
-                    _buildMenuCard(context, icon: Icons.view_timeline, label: "Escala", color: Colors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ScaleScreen()))),
-                    _buildMenuCard(context, icon: Icons.inventory_2, label: "Patrimônio", color: Colors.blueGrey, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PatrimonioScreen()))),
-                    _buildMenuCard(context, icon: Icons.groups, label: "Membros", color: Colors.indigo, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MembersScreen()))),
+                    
+                    // REGRAS DE VISUALIZAÇÃO AQUI
+                    
+                    // ESCALA: Visitante NÃO vê
+                    if (role != 'visitante')
+                      _buildMenuCard(context, icon: Icons.view_timeline, label: "Escala", color: Colors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ScaleScreen()))),
+                    
+                    // PATRIMÔNIO: Membro E Visitante NÃO veem (Só Admin e Financeiro)
+                    if (role != 'membro' && role != 'visitante')
+                      _buildMenuCard(context, icon: Icons.inventory_2, label: "Patrimônio", color: Colors.blueGrey, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PatrimonioScreen()))),
+                    
+                    // MEMBROS: Visitante NÃO vê
+                    if (role != 'visitante')
+                      _buildMenuCard(context, icon: Icons.groups, label: "Membros", color: Colors.indigo, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MembersScreen()))),
+                    
+                    // FINANÇAS (Dica: Geralmente visitantes também não devem ver isso, mas mantive conforme seu pedido original apenas para membros/visitantes verem)
                     _buildMenuCard(context, icon: Icons.attach_money, label: "Finanças", color: Colors.green[700]!, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()))),
+                    
+                    // LITURGIA (Público)
                     _buildMenuCard(context, icon: Icons.format_list_bulleted, label: "Liturgia", color: Colors.deepOrange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const LiturgiaScreen()))),
                   ],
                 ),
@@ -204,9 +219,9 @@ class HomeContent extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1), // Atualizado para withValues
               shape: BoxShape.circle,
-              border: Border.all(color: color.withOpacity(0.3), width: 1),
+              border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
             ),
             child: Icon(icon, color: color, size: 28),
           ),
@@ -230,7 +245,7 @@ class HomeContent extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), // Atualizado para withValues
               child: Icon(icon, size: 30, color: color),
             ),
             const SizedBox(height: 8),
