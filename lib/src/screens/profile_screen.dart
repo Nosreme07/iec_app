@@ -1,13 +1,14 @@
-import 'dart:io' show File; // Importante: File só será usado em plataformas não-web
-import 'dart:typed_data'; // Essencial para processar imagens na Web
-import 'package:flutter/foundation.dart' show kIsWeb; // Para detectar se é Web
+import 'dart:io'; 
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart'; // IMPORTANTE: PACOTE DE CORTE
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:flutter/services.dart'; 
+import 'package:flutter/services.dart';
 
 // --- IMPORTAÇÕES PARA PDF ---
 import 'package:pdf/pdf.dart';
@@ -28,122 +29,117 @@ class ProfileScreen extends StatelessWidget {
     }
   }
 
-  // --- FUNÇÃO PARA ALTERAR FOTO DE PERFIL (OTIMIZADA PARA WEB/IPHONE) ---
+  // --- NOVA FUNÇÃO: CORTAR IMAGEM ---
+  Future<File?> _cropImage(File imageFile) async {
+    CroppedFile? croppedFile = await ImageCropper().cropImage(
+      sourcePath: imageFile.path,
+      // Força a proporção 1:1 (Quadrado) para caber no círculo
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Ajustar Foto',
+          toolbarColor: Colors.blue[900], // Cor do seu App
+          toolbarWidgetColor: Colors.white,
+          initAspectRatio: CropAspectRatioPreset.square,
+          lockAspectRatio: true, // Trava no quadrado
+          hideBottomControls: false,
+        ),
+        IOSUiSettings(
+          title: 'Ajustar Foto',
+          aspectRatioLockEnabled: true,
+          resetAspectRatioEnabled: false,
+        ),
+      ],
+    );
+
+    if (croppedFile != null) {
+      return File(croppedFile.path);
+    }
+    return null;
+  }
+
+  // --- FUNÇÃO ALTERAR FOTO (ATUALIZADA COM CROP) ---
   Future<void> _pickAndUploadImage(BuildContext context, String uid) async {
     final ImagePicker picker = ImagePicker();
     
-    // O Safari solicitará permissão automaticamente aqui
-    final XFile? image = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 50, 
-      maxWidth: 400,
-    );
-
-    if (image == null) return;
-
     try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70, // Qualidade um pouco melhor para o corte
       );
 
-      // Referência para a pasta 'profile_photos' vista no seu Storage
+      if (image == null) return;
+
+      File? fileToUpload;
+      Uint8List? webBytesToUpload;
+
+      // LÓGICA DE CORTE (APENAS PARA MOBILE)
+      if (!kIsWeb) {
+        File originalFile = File(image.path);
+        // Chama a função de corte
+        fileToUpload = await _cropImage(originalFile);
+        
+        // Se o usuário cancelou o corte, paramos aqui
+        if (fileToUpload == null) return; 
+      } else {
+        // Na Web não usamos o cropper nativo
+        webBytesToUpload = await image.readAsBytes();
+      }
+
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(child: CircularProgressIndicator()),
+        );
+      }
+
       Reference ref = FirebaseStorage.instance.ref().child('profile_photos').child('$uid.jpg');
       
       if (kIsWeb) {
-        // --- LÓGICA PARA WEB (IPHONE VIA LINK) ---
-        // Na web, lemos o arquivo como bytes
-        Uint8List fileBytes = await image.readAsBytes();
         await ref.putData(
-          fileBytes, 
-          SettableMetadata(contentType: 'image/jpeg'), // Define o tipo para evitar erro de exibição
+          webBytesToUpload!, 
+          SettableMetadata(contentType: 'image/jpeg'),
         );
       } else {
-        // --- LÓGICA PARA APP NATIVO ---
-        File file = File(image.path);
-        await ref.putFile(file);
+        // Upload do arquivo CORTADO
+        await ref.putFile(fileToUpload!);
       }
 
       String downloadUrl = await ref.getDownloadURL();
 
-      // Atualiza o Firestore com o link da imagem
+      // Atualiza Firestore
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'foto_url': downloadUrl,
       });
 
       if (context.mounted) {
-        Navigator.pop(context); // Fecha o loading
+        Navigator.pop(context); // Fecha loading
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Foto atualizada com sucesso!"), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (context.mounted) Navigator.pop(context);
-      debugPrint("Erro no upload: $e");
+      debugPrint("Erro no processo: $e");
+      if (context.mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro ao atualizar foto.")));
+      }
     }
   }
 
-  // --- FUNÇÃO AUXILIAR: GERA O TEXTO COMPLETO DO QR CODE ---
   String _gerarTextoQrCode(Map<String, dynamic> data, String uid) {
     String get(String key) => (data[key] ?? "").toString().toUpperCase();
-    
     StringBuffer qrBuffer = StringBuffer();
     qrBuffer.writeln("IEC MORENO - FICHA DE MEMBRO");
     qrBuffer.writeln("================================");
-
-    void add(String label, String key) {
-      String val = get(key);
-      if (val.isNotEmpty && val != "NULL") {
-        qrBuffer.writeln("$label: $val");
-      }
-    }
-
-    add("NOME", 'nome_completo');
-    add("CPF", 'cpf');
-    add("RG", 'rg'); 
-    add("NASCIMENTO", 'nascimento');
-    add("SEXO", 'sexo');
-    add("SANGUE", 'grupo_sanguineo');
-    add("ESTADO CIVIL", 'estado_civil');
-    add("PROFISSAO", 'profissao');
-    add("ESCOLARIDADE", 'escolaridade');
-    
-    if (get('pai').isNotEmpty) add("PAI", 'pai');
-    if (get('mae').isNotEmpty) add("MÃE", 'mae');
-
-    qrBuffer.writeln("--------------------------------");
-
-    String endereco = get('endereco');
-    String numero = get('numero');
-    if (endereco.isNotEmpty) {
-      qrBuffer.writeln("ENDEREÇO: $endereco, $numero");
-    }
-    add("BAIRRO", 'bairro');
-    add("CIDADE", 'cidade');
-    add("CEP", 'cep');
-    add("WHATSAPP", 'whatsapp');
-    add("EMAIL", 'email');
-
-    qrBuffer.writeln("--------------------------------");
-
-    add("CARGO", 'cargo_atual');
-    add("DEPARTAMENTO", 'departamento');
-    add("SITUAÇÃO", 'situacao'); 
-    add("MEMBRO DESDE", 'membro_desde');
-    add("BATISMO", 'batismo_aguas');
-    if(get('oficial_igreja') != "NENHUM") add("OFICIAL", 'oficial_igreja');
-
-    add("CÔNJUGE", 'conjuge');
-    add("FILHOS", 'filhos');
-    
-    qrBuffer.writeln("================================");
+    qrBuffer.writeln("NOME: ${get('nome_completo')}");
+    if(get('cpf').isNotEmpty) qrBuffer.writeln("CPF: ${get('cpf')}");
+    qrBuffer.writeln("CARGO: ${get('cargo_atual')}");
     qrBuffer.writeln("ID SISTEMA: $uid");
-
     return qrBuffer.toString();
   }
 
-  // --- FUNÇÃO GERAR PDF ---
   Future<void> _generatePdf(BuildContext context, Map<String, dynamic> data, String uid) async {
     final pdf = pw.Document();
     final logoImage = await imageFromAssetBundle('assets/images/logo.png');
@@ -161,7 +157,6 @@ class ProfileScreen extends StatelessWidget {
     String nomeCompleto = get('nome_completo');
     String oficial = get('oficial_igreja');
     String cargo = (oficial.isNotEmpty && oficial != "NENHUM") ? oficial : get('cargo_atual');
-    String membroDesde = get('membro_desde');
     String qrData = _gerarTextoQrCode(data, uid);
 
     final cardColor = PdfColor.fromInt(0xFF616C7C); 
@@ -306,7 +301,7 @@ class ProfileScreen extends StatelessWidget {
           final data = snapshot.hasData && snapshot.data!.exists ? snapshot.data!.data() as Map<String, dynamic> : <String, dynamic>{};
           String get(String key) => (data[key] ?? "").toString();
 
-          String nomeCompleto = get('nome_completo').isNotEmpty ? get('nome_completo') : (user.email ?? "Membro");
+          String nomeDisplay = get('nome_completo').isNotEmpty ? get('nome_completo') : (user.email ?? "Membro");
           String fotoUrl = get('foto_url');
           String oficial = get('oficial_igreja');
           String cargoAtual = get('cargo_atual');
@@ -319,6 +314,7 @@ class ProfileScreen extends StatelessWidget {
             child: Column(
               children: [
                 const SizedBox(height: 10),
+                // --- CARTÃO VIRTUAL ---
                 Container(
                   width: double.infinity, height: 220, 
                   decoration: BoxDecoration(
@@ -341,18 +337,21 @@ class ProfileScreen extends StatelessWidget {
                         ]),
                         const Spacer(),
                         Row(children: [
-                            Container(
-                              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), 
-                              child: CircleAvatar(
-                                radius: 35, 
-                                backgroundColor: Colors.grey[300], 
-                                backgroundImage: (fotoUrl.isNotEmpty && fotoUrl != "null") ? NetworkImage(fotoUrl) : null, 
-                                child: (fotoUrl.isEmpty || fotoUrl == "null") ? const Icon(Icons.person, size: 40, color: Colors.grey) : null
-                              )
+                            GestureDetector( // Permite clicar na foto do cartão também
+                              onTap: () => _pickAndUploadImage(context, user.uid),
+                              child: Container(
+                                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), 
+                                child: CircleAvatar(
+                                  radius: 35, 
+                                  backgroundColor: Colors.grey[300], 
+                                  backgroundImage: (fotoUrl.isNotEmpty && fotoUrl != "null") ? NetworkImage(fotoUrl) : null, 
+                                  child: (fotoUrl.isEmpty || fotoUrl == "null") ? const Icon(Icons.person, size: 40, color: Colors.grey) : null
+                                )
+                              ),
                             ),
                             const SizedBox(width: 15),
                             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text(nomeCompleto.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  Text(nomeDisplay.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
                                   const SizedBox(height: 4),
                                   Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(4)), child: Text(cargo.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
                                   if (membroDesde.isNotEmpty) Text("Membro desde: $membroDesde", style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
@@ -363,6 +362,8 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 20),
+                
+                // --- QR CODE ---
                 Container(
                   width: double.infinity, padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))]),
@@ -377,6 +378,7 @@ class ProfileScreen extends StatelessWidget {
                       Text("ID: ${user.uid.substring(0, 8).toUpperCase()}...", style: const TextStyle(letterSpacing: 2, color: Colors.grey, fontSize: 12)),
                   ]),
                 ),
+                
                 const SizedBox(height: 30),
                 _buildSettingsTile(icon: Icons.person_outline, title: "Meus Dados (Completo)", subtitle: "Visualize e altere sua foto", color: cardColor, onTap: () => _showMyDetails(context, data)),
                 _buildSettingsTile(icon: Icons.lock_outline, title: "Alterar Senha", subtitle: "Atualize sua segurança", color: Colors.orange, onTap: () => _showChangePasswordDialog(context)),
@@ -423,8 +425,8 @@ class ProfileScreen extends StatelessWidget {
                 children: [
                   GestureDetector(
                     onTap: () {
-                      _pickAndUploadImage(context, FirebaseAuth.instance.currentUser!.uid);
                       Navigator.pop(context); 
+                      _pickAndUploadImage(context, FirebaseAuth.instance.currentUser!.uid); 
                     },
                     child: CircleAvatar(
                       radius: 50, 
@@ -441,7 +443,6 @@ class ProfileScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              Text(nomeDisplay, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
               const Text("Toque na foto para alterar", style: TextStyle(fontSize: 12, color: Colors.grey)),
               const SizedBox(height: 20), const Divider(),
               Expanded(

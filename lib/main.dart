@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart'; // Para identificar se é Web
-import 'package:flutter_localizations/flutter_localizations.dart'; 
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:firebase_messaging/firebase_messaging.dart'; // <--- IMPORTANTE: Adicionei isso
 
 // Importações das suas telas
 import 'src/screens/home_screen.dart';
 import 'src/screens/login_screen.dart';
-// Importação do serviço de notificação que criamos
-import 'src/services/notification_service.dart'; 
+
+// NÃO PRECISA MAIS DO IMPORT DO SERVICE
+// import 'src/services/notification_service.dart'; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,9 +30,24 @@ void main() async {
     await Firebase.initializeApp();
   }
 
-  // 2. Inicializa as configurações de Push Notification e Tópicos
-  // Isso fará o app pedir permissão e assinar o tópico 'todos' automaticamente
-  await NotificationService().initNotification();
+  // 2. CONFIGURAÇÃO DE NOTIFICAÇÃO (SIMPLIFICADA)
+  // Isso garante que quem abrir o app vai receber os avisos do site
+  try {
+    final fcm = FirebaseMessaging.instance;
+    
+    // Pede permissão (obrigatório para Android 13+ e iOS)
+    await fcm.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    // Inscreve no tópico "todos"
+    await fcm.subscribeToTopic('todos');
+    print("✅ Sucesso: App inscrito para receber avisos do tópico 'todos'");
+  } catch (e) {
+    print("❌ Erro ao configurar notificações: $e");
+  }
 
   runApp(const MyApp());
 }

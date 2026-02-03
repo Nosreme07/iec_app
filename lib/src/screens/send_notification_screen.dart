@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../services/push_notification_api.dart';
 
 class SendNotificationScreen extends StatefulWidget {
   const SendNotificationScreen({super.key});
@@ -33,11 +32,12 @@ class _SendNotificationScreenState extends State<SendNotificationScreen> {
       return;
     }
 
+    // Pergunta se o usuário quer realmente enviar
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Confirmar Envio"),
-        content: const Text("Esta mensagem será salva no histórico e enviada para TODOS os usuários. Deseja continuar?"),
+        content: const Text("Esta mensagem será enviada para o celular de todos os membros. Confirma?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx), 
@@ -45,8 +45,8 @@ class _SendNotificationScreenState extends State<SendNotificationScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(ctx);
-              _processarEnvio();
+              Navigator.pop(ctx); // Fecha o alerta
+              _processarEnvioAutomatico(); // Chama a função de salvar
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
             child: const Text("ENVIAR AGORA", style: TextStyle(color: Colors.white)),
@@ -56,33 +56,28 @@ class _SendNotificationScreenState extends State<SendNotificationScreen> {
     );
   }
 
-  // Função que salva no banco e dispara o Push
-  Future<void> _processarEnvio() async {
+  // Função que salva no banco (e o Robô na nuvem faz o envio)
+  Future<void> _processarEnvioAutomatico() async {
     setState(() => _isLoading = true);
     
     try {
       final String titulo = _titleController.text.trim();
       final String mensagem = _bodyController.text.trim();
 
-      // 1. SALVAR NO FIRESTORE (Para aparecer no histórico do Sino)
+      // AO SALVAR AQUI, A CLOUD FUNCTION VAI DISPARAR O PUSH SOZINHA
       await FirebaseFirestore.instance.collection('notices').add({
         'title': titulo,
         'body': mensagem,
         'timestamp': FieldValue.serverTimestamp(),
         'sentBy': FirebaseAuth.instance.currentUser?.uid,
-        'role': 'geral', // Identificador opcional
+        'role': 'geral',
       });
 
-      // 2. DISPARAR PUSH NOTIFICATION (Google Cloud Messaging)
-      await PushNotificationApi.sendNotificationToAll(
-        title: titulo,
-        body: mensagem,
-      );
-
       if (mounted) {
+        // Mostra sucesso e fecha a tela
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Aviso enviado e registrado com sucesso!"), 
+            content: Text("Sucesso! O sistema está enviando as notificações."), 
             backgroundColor: Colors.green
           ),
         );
@@ -91,7 +86,7 @@ class _SendNotificationScreenState extends State<SendNotificationScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erro no processo: $e"), backgroundColor: Colors.red),
+          SnackBar(content: Text("Erro ao salvar: $e"), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -111,11 +106,16 @@ class _SendNotificationScreenState extends State<SendNotificationScreen> {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            const Icon(Icons.campaign, size: 80, color: Colors.blue),
+            const Icon(Icons.rocket_launch, size: 80, color: Colors.blue),
             const SizedBox(height: 10),
             const Text(
-              "Disparar Notificação",
+              "Disparo Automático",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              "Ao salvar, a notificação será enviada para todos.",
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
             const SizedBox(height: 20),
             TextField(
@@ -150,7 +150,7 @@ class _SendNotificationScreenState extends State<SendNotificationScreen> {
                     onPressed: _confirmarEnvio,
                     icon: const Icon(Icons.send, color: Colors.white),
                     label: const Text(
-                      "SALVAR E DISPARAR", 
+                      "PUBLICAR E NOTIFICAR", 
                       style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)
                     ),
                     style: ElevatedButton.styleFrom(
