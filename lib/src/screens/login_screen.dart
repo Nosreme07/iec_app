@@ -18,7 +18,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     if (_cpfController.text.isEmpty || _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha CPF e Senha")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("Preencha CPF e Senha")));
       return;
     }
 
@@ -100,39 +101,39 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 // --- LOGO DA IGREJA ---
                 Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      )
-                    ]
-                  ),
+                  decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    )
+                  ]),
                   child: Image.asset(
                     'assets/images/logo.png',
-                    height: 150, 
+                    height: 150,
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) {
-                      return const Icon(Icons.church, size: 100, color: Colors.white);
+                      return const Icon(Icons.church,
+                          size: 100, color: Colors.white);
                     },
                   ),
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 const Text(
                   "IEC Moreno",
                   style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2,
-                    shadows: [
-                      Shadow(color: Colors.black45, offset: Offset(2, 2), blurRadius: 4)
-                    ]
-                  ),
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                      shadows: [
+                        Shadow(
+                            color: Colors.black45,
+                            offset: Offset(2, 2),
+                            blurRadius: 4)
+                      ]),
                 ),
                 const SizedBox(height: 40),
 
@@ -161,58 +162,65 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 30),
-
                       TextField(
                         controller: _cpfController,
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
                           labelText: "CPF (apenas números)",
-                          prefixIcon: Icon(Icons.person_outline, color: Colors.blue[800]),
+                          prefixIcon: Icon(Icons.person_outline,
+                              color: Colors.blue[800]),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.blue[800]!, width: 2),
+                            borderSide:
+                                BorderSide(color: Colors.blue[800]!, width: 2),
                           ),
                           filled: true,
                           fillColor: Colors.grey[50],
                         ),
                       ),
                       const SizedBox(height: 20),
-
                       TextField(
                         controller: _passwordController,
                         obscureText: _isObscure,
                         decoration: InputDecoration(
                           labelText: "Senha",
-                          prefixIcon: Icon(Icons.lock_outline, color: Colors.blue[800]),
+                          prefixIcon:
+                              Icon(Icons.lock_outline, color: Colors.blue[800]),
                           suffixIcon: IconButton(
-                            icon: Icon(_isObscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: Colors.grey),
-                            onPressed: () => setState(() => _isObscure = !_isObscure),
+                            icon: Icon(
+                                _isObscure
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                color: Colors.grey),
+                            onPressed: () =>
+                                setState(() => _isObscure = !_isObscure),
                           ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.blue[800]!, width: 2),
+                            borderSide:
+                                BorderSide(color: Colors.blue[800]!, width: 2),
                           ),
                           filled: true,
                           fillColor: Colors.grey[50],
                         ),
                       ),
-
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
                           onPressed: _forgotPassword,
-                          child: Text("Esqueci a senha", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[900])),
+                          child: Text("Esqueci a senha",
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue[900])),
                         ),
                       ),
-
                       const SizedBox(height: 20),
-
                       SizedBox(
                         width: double.infinity,
                         height: 55,
@@ -220,14 +228,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed: _isLoading ? null : _login,
                           style: ElevatedButton.styleFrom(
                             // Botão combinando com o fundo
-                            backgroundColor: const Color(0xFF2E4C9D), 
+                            backgroundColor: const Color(0xFF2E4C9D),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                             elevation: 2,
                           ),
                           child: _isLoading
-                              ? const CircularProgressIndicator(color: Colors.white)
+                              ? const CircularProgressIndicator(
+                                  color: Colors.white)
                               : const Text(
                                   "ENTRAR",
                                   style: TextStyle(
@@ -242,13 +251,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                 ),
-                
+
                 const SizedBox(height: 30),
-                
+
                 Text(
-                  "Versão 1.0.0\nCriado por Emerson Fernandes",
+                  "Versão 1.0.0\nDesenvolvido por Emerson Fernandes",
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.6), fontSize: 12),
                 ),
               ],
             ),

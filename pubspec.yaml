@@ -59,6 +59,8 @@ flutter:
   
   assets:
     - assets/json/ARA.json
+    - assets/json/ACF.json
+    - assets/json/NVI.json
     - assets/json/hinos.json
     - assets/images/
 
