@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../utils/admin_config.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -10,255 +13,327 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _cpfController = TextEditingController();
-  final _passwordController = TextEditingController();
+  // Controles de Login
+  final _cpfLoginController = TextEditingController();
+  final _passwordLoginController = TextEditingController();
+
+  // Controles de Cadastro (Modal)
+  final _nameRegController = TextEditingController();
+  final _cpfRegController = TextEditingController();
+  final _phoneRegController = TextEditingController();
+  final _passwordRegController = TextEditingController();
 
   bool _isLoading = false;
-  bool _isObscure = true;
+  bool _isObscureLogin = true;
+  bool _isObscureReg = true;
 
+  // --- 1. SUPORTE WHATSAPP ---
+  // Função atualizada para aceitar mensagens personalizadas
+  Future<void> _falarComDesenvolvedor({String? mensagemPersonalizada}) async {
+    const telefone = "5581995065696";
+    final texto = mensagemPersonalizada ??
+        "Olá Emerson, preciso de suporte no App IEC Moreno.";
+    final Uri whatsappUri =
+        Uri.parse("https://wa.me/$telefone?text=${Uri.encodeComponent(texto)}");
+
+    if (!await launchUrl(whatsappUri, mode: LaunchMode.externalApplication)) {
+      _showMsg("Não foi possível abrir o WhatsApp.");
+    }
+  }
+
+  // --- 2. LÓGICA DE LOGIN ---
   Future<void> _login() async {
-    if (_cpfController.text.isEmpty || _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Preencha CPF e Senha")));
+    if (_cpfLoginController.text.isEmpty ||
+        _passwordLoginController.text.isEmpty) {
+      _showMsg("Preencha CPF e Senha");
       return;
     }
-
     setState(() => _isLoading = true);
-
     try {
-      final email = AdminConfig.getEmailFromCpf(_cpfController.text);
+      String emailInterno =
+          AdminConfig.getEmailFromCpf(_cpfLoginController.text.trim());
       await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: _passwordController.text,
+        email: emailInterno,
+        password: _passwordLoginController.text.trim(),
       );
-      // O main.dart redireciona automaticamente
-    } on FirebaseAuthException catch (e) {
-      String message = "Erro ao fazer login.";
-      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
-        message = "CPF ou senha incorretos.";
-      } else if (e.code == 'invalid-email') {
-        message = "CPF inválido.";
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), backgroundColor: Colors.red),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red),
-        );
-      }
+      _showMsg("Acesso negado. Verifique seus dados.");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _forgotPassword() {
-    showDialog(
+  // --- 3. ESQUECI MINHA SENHA (FLUXO DIRETO PARA O SUPORTE) ---
+  void _esqueciSenhaSimplificado() {
+    if (_cpfLoginController.text.isEmpty) {
+      _showMsg("Por favor, digite seu CPF no campo acima primeiro.");
+      return;
+    }
+
+    final cpf = _cpfLoginController.text.trim();
+    final mensagem =
+        "Olá Emerson! Esqueci minha senha do App IEC Moreno.\n\n👤 Meu CPF é: $cpf\n🔑 Poderia zerar meu acesso?";
+
+    _falarComDesenvolvedor(mensagemPersonalizada: mensagem);
+  }
+
+  // --- 4. CADASTRO DE VISITANTE ---
+  Future<void> _cadastrarVisitante() async {
+    if (_nameRegController.text.isEmpty ||
+        _cpfRegController.text.isEmpty ||
+        _passwordRegController.text.length < 6) {
+      _showMsg("Preencha tudo corretamente. Senha mín. 6 caracteres.");
+      return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      String emailInterno =
+          AdminConfig.getEmailFromCpf(_cpfRegController.text.trim());
+      UserCredential userCred =
+          await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: emailInterno,
+        password: _passwordRegController.text.trim(),
+      );
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCred.user!.uid)
+          .set({
+        'nome_completo': _nameRegController.text.trim(),
+        'cpf': _cpfRegController.text.trim(),
+        'whatsapp': _phoneRegController.text.trim(),
+        'role': 'visitante',
+        'cargo_atual': 'Visitante',
+        'created_at': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) Navigator.pop(context);
+      _showMsg("Cadastro realizado! Seja bem-vindo.", color: Colors.green);
+    } catch (e) {
+      _showMsg("Erro: CPF já cadastrado ou dados inválidos.");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- 5. MODAL DE CADASTRO ---
+  void _mostrarModalCadastro() {
+    showModalBottomSheet(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Esqueceu a senha?"),
-          content: const Text(
-            "Como o sistema utiliza logins baseados em CPF, não é possível enviar e-mail de recuperação.\n\n"
-            "Por favor, procure a secretaria da igreja ou o administrador (Pastor/Líder) para que eles criem uma nova senha para você.",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Entendi"),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+              left: 24,
+              right: 24,
+              top: 24),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Novo Visitante",
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                TextField(
+                    controller: _nameRegController,
+                    decoration: const InputDecoration(
+                        labelText: "Nome Completo",
+                        border: OutlineInputBorder())),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: _cpfRegController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                      labelText: "CPF (Apenas números)",
+                      border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                    controller: _phoneRegController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                        labelText: "WhatsApp para contato",
+                        border: OutlineInputBorder())),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: _passwordRegController,
+                  obscureText: _isObscureReg,
+                  decoration: InputDecoration(
+                    labelText: "Crie uma Senha",
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(_isObscureReg
+                          ? Icons.visibility
+                          : Icons.visibility_off),
+                      onPressed: () =>
+                          setModalState(() => _isObscureReg = !_isObscureReg),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 25),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _cadastrarVisitante,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2E4C9D)),
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text("CADASTRAR",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ),
     );
+  }
+
+  void _showMsg(String msg, {Color color = Colors.red}) {
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // --- BACKGROUND COM DEGRADÊ (CORES DO ÍCONE) ---
       body: Container(
+        width: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
+            colors: [Color(0xFF4169E1), Color(0xFF2E4C9D)],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF6495ED), // Azul Cornflower (Topo - Mais claro)
-              Color(0xFF4169E1), // Azul Royal (Meio)
-              Color(0xFF2E4C9D), // Azul Escuro Profundo (Fundo)
-            ],
           ),
         ),
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // --- LOGO DA IGREJA ---
+                Image.asset('assets/images/logo.png',
+                    height: 100,
+                    errorBuilder: (c, e, s) => const Icon(Icons.church,
+                        size: 80, color: Colors.white)),
+                const SizedBox(height: 10),
+                const Text("IEC Moreno",
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 30),
+
+                // CARD DE LOGIN
                 Container(
-                  decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    )
-                  ]),
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    height: 150,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Icon(Icons.church,
-                          size: 100, color: Colors.white);
-                    },
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                const Text(
-                  "IEC Moreno",
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                      shadows: [
-                        Shadow(
-                            color: Colors.black45,
-                            offset: Offset(2, 2),
-                            blurRadius: 4)
-                      ]),
-                ),
-                const SizedBox(height: 40),
-
-                // --- CARD DE LOGIN ---
-                Container(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
-                        blurRadius: 15,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20)),
                   child: Column(
                     children: [
-                      Text(
-                        "Bem-vindo",
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue[900], // Cor do texto ajustada
-                        ),
-                      ),
-                      const SizedBox(height: 30),
+                      const Text("Acesso de Membros",
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 15),
                       TextField(
-                        controller: _cpfController,
+                        controller: _cpfLoginController,
                         keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: "CPF (apenas números)",
-                          prefixIcon: Icon(Icons.person_outline,
-                              color: Colors.blue[800]),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide:
-                                BorderSide(color: Colors.blue[800]!, width: 2),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[50],
-                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly
+                        ],
+                        decoration: const InputDecoration(
+                            labelText: "CPF (apenas números)",
+                            prefixIcon: Icon(Icons.badge_outlined),
+                            border: OutlineInputBorder()),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 15),
                       TextField(
-                        controller: _passwordController,
-                        obscureText: _isObscure,
+                        controller: _passwordLoginController,
+                        obscureText: _isObscureLogin,
                         decoration: InputDecoration(
                           labelText: "Senha",
-                          prefixIcon:
-                              Icon(Icons.lock_outline, color: Colors.blue[800]),
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          border: const OutlineInputBorder(),
                           suffixIcon: IconButton(
-                            icon: Icon(
-                                _isObscure
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                                color: Colors.grey),
-                            onPressed: () =>
-                                setState(() => _isObscure = !_isObscure),
+                            icon: Icon(_isObscureLogin
+                                ? Icons.visibility
+                                : Icons.visibility_off),
+                            onPressed: () => setState(
+                                () => _isObscureLogin = !_isObscureLogin),
                           ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide:
-                                BorderSide(color: Colors.blue[800]!, width: 2),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[50],
                         ),
                       ),
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: _forgotPassword,
-                          child: Text("Esqueci a senha",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue[900])),
+                          onPressed: _esqueciSenhaSimplificado,
+                          child: const Text("Esqueci minha senha",
+                              style: TextStyle(fontSize: 12)),
                         ),
                       ),
-                      const SizedBox(height: 20),
                       SizedBox(
                         width: double.infinity,
-                        height: 55,
+                        height: 50,
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _login,
                           style: ElevatedButton.styleFrom(
-                            // Botão combinando com o fundo
-                            backgroundColor: const Color(0xFF2E4C9D),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 2,
-                          ),
+                              backgroundColor: const Color(0xFF2E4C9D)),
                           child: _isLoading
-                              ? const CircularProgressIndicator(
-                                  color: Colors.white)
-                              : const Text(
-                                  "ENTRAR",
+                              ? const CircularProgressIndicator()
+                              : const Text("ENTRAR",
                                   style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                    letterSpacing: 1.5,
-                                  ),
-                                ),
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ],
                   ),
                 ),
 
-                const SizedBox(height: 30),
+                const SizedBox(height: 25),
+                OutlinedButton(
+                  onPressed: _mostrarModalCadastro,
+                  style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.white),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 40, vertical: 15)),
+                  child: const Text("NÃO TENHO CADASTRO / CRIAR CONTA",
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
 
-                Text(
-                  "Versão 1.0.0\nDesenvolvido por Emerson Fernandes",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: Colors.white.withOpacity(0.6), fontSize: 12),
+                const SizedBox(height: 50),
+
+                // RODAPÉ COM SUPORTE
+                Column(
+                  children: [
+                    const Text("Desenvolvido por Emerson Fernandes",
+                        style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    const SizedBox(height: 5),
+                    GestureDetector(
+                      onTap: () => _falarComDesenvolvedor(),
+                      child: const Text(
+                        "Suporte: (81) 99506-5696",
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.underline),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

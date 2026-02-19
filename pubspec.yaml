@@ -1,6 +1,6 @@
 name: iec_app
 description: "App da Igreja Evangélica Congregacional em Moreno."
-publish_to: 'none'
+publish_to: 'none' # Impede a publicação acidental no pub.dev
 
 version: 1.0.0+1
 
@@ -11,60 +11,78 @@ dependencies:
   flutter:
     sdk: flutter
   
+  # --- LOCALIZAÇÃO E IDIOMA ---
+  # Necessário para que calendários e textos do sistema fiquem em PT-BR
   flutter_localizations:
     sdk: flutter
-  
-  # Internacionalização
   intl: ^0.20.2
 
-  # --- HTTP (ESSENCIAL PARA ENVIAR NOTIFICAÇÕES) ---
+  # --- REDE E COMUNICAÇÃO EXTERNA ---
+  # http: Essencial para enviar notificações via API
+  # url_launcher: Abre o WhatsApp do desenvolvedor e links externos
   http: ^1.2.0
+  url_launcher: ^6.2.5
 
-  # --- FIREBASE (VERSÕES COMPATÍVEIS) ---
-  firebase_core: ^2.32.0
-  firebase_auth: ^4.20.0
-  cloud_firestore: ^4.17.5
-  firebase_storage: ^11.7.7
-  firebase_messaging: ^14.9.4
+  # --- BLOCO FIREBASE ATUALIZADO (Geração v3 - Sem Conflitos) ---
+  # Estas versões foram sincronizadas para trabalharem juntas no motor v3
+  firebase_core: ^3.10.1
+  firebase_auth: ^5.4.1
+  cloud_firestore: ^5.6.1
+  firebase_storage: ^12.4.1
+  firebase_messaging: ^15.2.1
+
+  # --- SEGURANÇA E AUTENTICAÇÃO EXTRA ---
+  # firebase_app_check: Protege sua cota de SMS contra robôs (Play Integrity)
+  # google_sign_in: Permite o login com a conta do Gmail
+  firebase_app_check: ^0.3.2+8
+  google_sign_in: ^6.2.2
   
-  # --- PDF e IMPRESSÃO ---
+  # --- GERAÇÃO DE DOCUMENTOS (Relatórios e Carteirinhas) ---
   pdf: ^3.10.4
   printing: ^5.12.0
 
-  # --- UTILITÁRIOS ---
+  # --- UTILITÁRIOS DE MÍDIA E DADOS ---
+  # image_picker/cropper: Para o membro tirar e editar a foto de perfil
+  # qr_flutter: Gera o QR Code para a carteirinha de membro
+  # shared_preferences: Salva localmente as preferências (como hinos favoritos)
+  # share_plus: Permite compartilhar hinos ou versículos com outras pessoas
   cupertino_icons: ^1.0.2
   image_picker: ^1.0.7
   image_cropper: ^8.0.2
   qr_flutter: ^4.1.0
   shared_preferences: ^2.2.2
-  
-  # --- COMPARTILHAMENTO (NOVO) ---
   share_plus: ^10.0.0
 
-  # --- UI e FONTES ---
+  # --- INTERFACE, FONTES E ORGANIZAÇÃO ---
+  # google_fonts: Melhora a estética dos textos (ex: fontes clássicas para a Bíblia)
+  # mask_text_input_formatter: Formata o CPF (000.000.000-00) automaticamente
+  # provider: Gerenciamento eficiente das informações do app
   google_fonts: ^8.0.0
   mask_text_input_formatter: ^2.9.0
-  url_launcher: ^6.2.5
   provider: ^6.1.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  # Gerador de ícones
+  
+  # --- FERRAMENTA DE ÍCONE ---
+  # Gera o ícone da igreja automaticamente para todas as plataformas
   flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
   
+  # --- DECLARAÇÃO DE ARQUIVOS INTERNOS (ASSETS) ---
   assets:
-    - assets/json/ARA.json
-    - assets/json/ACF.json
-    - assets/json/NVI.json
-    - assets/json/hinos.json
+    # Bíblias: Inclui todos os arquivos JSON da pasta (KJF.json, etc)
+    - assets/json/bible/
+    # Hinário: Inclui os arquivos de hinos e salmos
+    - assets/json/hymnal/
+    # Imagens: Logo da igreja e ícones gerais
     - assets/images/
 
-# --- CONFIGURAÇÃO DO ÍCONE ---
+# --- CONFIGURAÇÃO AUTOMÁTICA DO ÍCONE DO APP ---
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true

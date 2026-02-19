@@ -61,9 +61,19 @@ class _BibleScreenState extends State<BibleScreen> {
   // --- CONTROLE DE VERSÃO ---
   String _currentVersion = 'ARA'; // Versão padrão
   final Map<String, String> _versions = {
-    'ARA': 'Almeida Revista e Atualizada',
     'ACF': 'Almeida Corrigida Fiel',
+    'ARA': 'Almeida Revista e Atualizada',
+    'ARC': 'Almeida Revista e Corrigida',
+    'AS21': 'Almeida Século 21',
+    'JFAA': 'João Ferreira de Almeida Atualizada',
+    'KJA': 'King James Atualizada',
+    'KJF': 'King James Fiel',
+    'NAA': 'Nova Almeida Atualizada',
+    'NBV': 'Nova Bíblia Viva',
+    'NTLH': 'Nova Tradução na Linguagem de Hoje',
     'NVI': 'Nova Versão Internacional',
+    'NVT': 'Nova Versão Transformadora',
+    'TB': 'Tradução Brasileira',
   };
 
   @override
@@ -77,8 +87,8 @@ class _BibleScreenState extends State<BibleScreen> {
     setState(() => _isLoading = true);
     try {
       // Carrega o arquivo JSON dinamicamente baseado na _currentVersion
-      final String response =
-          await rootBundle.loadString('assets/json/$_currentVersion.json');
+      final String response = await rootBundle
+          .loadString('assets/json/bible/$_currentVersion.json');
       final data = json.decode(response);
 
       setState(() {

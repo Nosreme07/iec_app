@@ -43,7 +43,7 @@ class _HymnalScreenState extends State<HymnalScreen> {
     await prefs.setStringList('hinos_favoritos', _favoritos);
   }
 
-  // --- UPLOAD (ADMIN) ---
+  // --- UPLOAD (ADMIN) COM LIMPEZA TOTAL E TRADUÇÃO DAS CHAVES ---
   Future<void> _uploadHinosDoJsonParaFirebase() async {
     try {
       showDialog(
@@ -52,28 +52,68 @@ class _HymnalScreenState extends State<HymnalScreen> {
         builder: (c) => const Center(child: CircularProgressIndicator()),
       );
 
-      final String response = await rootBundle.loadString('assets/json/hinos.json');
-      final List<dynamic> hinos = json.decode(response);
-      final batch = FirebaseFirestore.instance.batch();
+      // 1. BUSCAR E DELETAR TODOS OS HINOS ANTIGOS (Limpeza do Banco)
+      final querySnapshot =
+          await FirebaseFirestore.instance.collection('hinos').get();
+      WriteBatch deleteBatch = FirebaseFirestore.instance.batch();
+      int deleteCount = 0;
 
-      for (var hino in hinos) {
-        DocumentReference docRef = FirebaseFirestore.instance
-            .collection('hinos')
-            .doc(hino['numero'].toString());
-
-        batch.set(docRef, {
-          "numero": hino['numero'],
-          "titulo": hino['titulo'],
-          "letra": hino['letra'],
-        });
+      for (var doc in querySnapshot.docs) {
+        deleteBatch.delete(doc.reference);
+        deleteCount++;
+        // Firebase aceita max 500 operações por lote. Enviamos a cada 400.
+        if (deleteCount % 400 == 0) {
+          await deleteBatch.commit();
+          deleteBatch = FirebaseFirestore.instance.batch();
+        }
+      }
+      if (deleteCount % 400 != 0) {
+        await deleteBatch.commit(); // Deleta os restantes
       }
 
-      await batch.commit();
+      // 2. CARREGAR E SALVAR OS NOVOS HINOS
+      final String response =
+          await rootBundle.loadString('assets/json/hymnal/salmos_e_hinos.json');
+      final List<dynamic> hinos = json.decode(response);
 
-      if (mounted) Navigator.pop(context);
+      WriteBatch uploadBatch = FirebaseFirestore.instance.batch();
+      int uploadCount = 0;
+
+      for (var hino in hinos) {
+        // Pega o número e tira os zeros à esquerda (ex: "001" -> "1")
+        String numeroBruto = (hino['number'] ?? '0').toString();
+        // Remove os zeros usando parse para int. Se tiver alguma letra junto, usa replaceFirst como fallback
+        String numeroLimpo = int.tryParse(numeroBruto)?.toString() ??
+            numeroBruto.replaceFirst(RegExp(r'^0+'), '');
+
+        if (numeroLimpo.isEmpty) numeroLimpo = '0';
+
+        DocumentReference docRef =
+            FirebaseFirestore.instance.collection('hinos').doc(numeroLimpo);
+
+        // Salvamos no Firebase em PORTUGUÊS e com o número já limpo
+        uploadBatch.set(docRef, {
+          "numero": numeroLimpo,
+          "titulo": hino['title'] ?? 'Sem Título',
+          "letra": hino['lyrics'] ?? '',
+        });
+
+        uploadCount++;
+        if (uploadCount % 400 == 0) {
+          await uploadBatch.commit();
+          uploadBatch = FirebaseFirestore.instance.batch();
+        }
+      }
+      if (uploadCount % 400 != 0) {
+        await uploadBatch.commit(); // Salva os restantes
+      }
+
+      if (mounted) Navigator.pop(context); // Fecha o loading
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Sucesso! Hinos atualizados!"), backgroundColor: Colors.green),
+          const SnackBar(
+              content: Text("Sucesso! Banco limpo e novos hinos enviados!"),
+              backgroundColor: Colors.green),
         );
       }
     } catch (e) {
@@ -92,7 +132,10 @@ class _HymnalScreenState extends State<HymnalScreen> {
     if (user == null) return const Center(child: CircularProgressIndicator());
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots(),
       builder: (context, userSnapshot) {
         bool podeEditar = false;
         if (userSnapshot.hasData && userSnapshot.data!.exists) {
@@ -103,21 +146,26 @@ class _HymnalScreenState extends State<HymnalScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text("Salmos e Hinos", style: TextStyle(color: Colors.white)),
+            title: const Text("Salmos e Hinos",
+                style: TextStyle(color: Colors.white)),
             backgroundColor: Colors.orange[800],
             iconTheme: const IconThemeData(color: Colors.white),
             actions: [
               IconButton(
-                icon: Icon(_mostrarApenasFavoritos ? Icons.favorite : Icons.favorite_border),
-                tooltip: _mostrarApenasFavoritos ? "Ver Todos" : "Ver Favoritos",
-                onPressed: () => setState(() => _mostrarApenasFavoritos = !_mostrarApenasFavoritos),
+                icon: Icon(_mostrarApenasFavoritos
+                    ? Icons.favorite
+                    : Icons.favorite_border),
+                tooltip:
+                    _mostrarApenasFavoritos ? "Ver Todos" : "Ver Favoritos",
+                onPressed: () => setState(
+                    () => _mostrarApenasFavoritos = !_mostrarApenasFavoritos),
               ),
               if (podeEditar)
                 IconButton(
                   icon: const Icon(Icons.cloud_upload),
                   tooltip: "Fazer Upload (JSON)",
                   onPressed: () {
-                     _uploadHinosDoJsonParaFirebase();
+                    _uploadHinosDoJsonParaFirebase();
                   },
                 ),
             ],
@@ -128,14 +176,18 @@ class _HymnalScreenState extends State<HymnalScreen> {
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: TextField(
-                  onChanged: (value) => setState(() => _textoBusca = value.toLowerCase()),
+                  onChanged: (value) =>
+                      setState(() => _textoBusca = value.toLowerCase()),
                   decoration: InputDecoration(
                     labelText: 'Buscar (título, número ou letra)',
                     prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _textoBusca.isNotEmpty 
-                      ? IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _textoBusca = "")) 
-                      : null,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    suffixIcon: _textoBusca.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () => setState(() => _textoBusca = ""))
+                        : null,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
                     filled: true,
                     fillColor: Colors.grey[100],
                   ),
@@ -145,40 +197,52 @@ class _HymnalScreenState extends State<HymnalScreen> {
               // LISTA DE HINOS
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('hinos').snapshots(),
+                  stream: FirebaseFirestore.instance
+                      .collection('hinos')
+                      .snapshots(),
                   builder: (context, snapshot) {
-                    
                     if (snapshot.hasError) {
-                      return Center(child: Text("Erro: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
+                      return Center(
+                          child: Text("Erro: ${snapshot.error}",
+                              style: const TextStyle(color: Colors.red)));
                     }
-                    
+
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
                     }
 
                     var docs = snapshot.data!.docs;
-                    
-                    // ORDENAÇÃO MANUAL
+
+                    // ORDENAÇÃO MANUAL (Com proteção contra nulos)
                     var listaHinos = docs.toList();
                     listaHinos.sort((a, b) {
                       var dataA = a.data() as Map<String, dynamic>;
                       var dataB = b.data() as Map<String, dynamic>;
-                      
-                      int numA = int.tryParse(dataA['numero'].toString()) ?? 0;
-                      int numB = int.tryParse(dataB['numero'].toString()) ?? 0;
-                      
+
+                      int numA =
+                          int.tryParse((dataA['numero'] ?? '0').toString()) ??
+                              0;
+                      int numB =
+                          int.tryParse((dataB['numero'] ?? '0').toString()) ??
+                              0;
+
                       return numA.compareTo(numB);
                     });
 
-                    // FILTRAGEM
+                    // FILTRAGEM (Com proteção contra nulos)
                     final hinosFiltrados = listaHinos.where((doc) {
                       final hino = doc.data() as Map<String, dynamic>;
-                      final titulo = hino['titulo'].toString().toLowerCase();
-                      final numero = hino['numero'].toString();
-                      final letra = (hino['letra'] ?? '').toString().toLowerCase();
-                      
-                      bool matchBusca = titulo.contains(_textoBusca) || numero.contains(_textoBusca) || letra.contains(_textoBusca);
-                      bool matchFavorito = !_mostrarApenasFavoritos || _favoritos.contains(numero);
+                      final titulo =
+                          (hino['titulo'] ?? '').toString().toLowerCase();
+                      final numero = (hino['numero'] ?? '').toString();
+                      final letra =
+                          (hino['letra'] ?? '').toString().toLowerCase();
+
+                      bool matchBusca = titulo.contains(_textoBusca) ||
+                          numero.contains(_textoBusca) ||
+                          letra.contains(_textoBusca);
+                      bool matchFavorito = !_mostrarApenasFavoritos ||
+                          _favoritos.contains(numero);
 
                       return matchBusca && matchFavorito;
                     }).toList();
@@ -188,12 +252,13 @@ class _HymnalScreenState extends State<HymnalScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.music_off, size: 60, color: Colors.grey[300]),
+                            Icon(Icons.music_off,
+                                size: 60, color: Colors.grey[300]),
                             const SizedBox(height: 10),
                             Text(
-                              docs.isEmpty 
-                                ? "Banco de dados vazio.\nClique na nuvem para enviar os hinos." 
-                                : "Nenhum hino encontrado.",
+                              docs.isEmpty
+                                  ? "Banco de dados vazio.\nClique na nuvem para enviar os hinos."
+                                  : "Nenhum hino encontrado.",
                               textAlign: TextAlign.center,
                               style: const TextStyle(color: Colors.grey),
                             ),
@@ -208,19 +273,32 @@ class _HymnalScreenState extends State<HymnalScreen> {
                         final doc = hinosFiltrados[index];
                         final hino = doc.data() as Map<String, dynamic>;
                         hino['id'] = doc.id;
-                        String numeroStr = hino['numero'].toString();
+
+                        String numeroStr = (hino['numero'] ?? '').toString();
+                        String tituloStr =
+                            (hino['titulo'] ?? 'Sem Título').toString();
                         bool ehFavorito = _favoritos.contains(numeroStr);
 
                         return Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 4),
                           child: ListTile(
                             leading: CircleAvatar(
                               backgroundColor: Colors.orange[100],
-                              child: Text(numeroStr, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange[900])),
+                              child: Text(numeroStr,
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.orange[900])),
                             ),
-                            title: Text(hino['titulo'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                            title: Text(tituloStr,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold)),
                             trailing: IconButton(
-                              icon: Icon(ehFavorito ? Icons.favorite : Icons.favorite_border, color: ehFavorito ? Colors.red : Colors.grey),
+                              icon: Icon(
+                                  ehFavorito
+                                      ? Icons.favorite
+                                      : Icons.favorite_border,
+                                  color: ehFavorito ? Colors.red : Colors.grey),
                               onPressed: () => _alternarFavorito(numeroStr),
                             ),
                             onTap: () {
@@ -230,7 +308,8 @@ class _HymnalScreenState extends State<HymnalScreen> {
                                   builder: (context) => HymnDetailScreen(
                                     hino: hino,
                                     ehFavorito: ehFavorito,
-                                    aoAlternarFavorito: () => _alternarFavorito(numeroStr),
+                                    aoAlternarFavorito: () =>
+                                        _alternarFavorito(numeroStr),
                                     podeEditar: podeEditar, // PASSA A PERMISSÃO
                                   ),
                                 ),
@@ -259,9 +338,9 @@ class HymnDetailScreen extends StatefulWidget {
   final bool podeEditar;
 
   const HymnDetailScreen({
-    super.key, 
-    required this.hino, 
-    required this.ehFavorito, 
+    super.key,
+    required this.hino,
+    required this.ehFavorito,
     required this.aoAlternarFavorito,
     required this.podeEditar,
   });
@@ -274,7 +353,7 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
   double _tamanhoFonte = 18.0;
   late bool _localFavorito;
   bool _modoEdicao = false;
-  
+
   // Controladores para edição
   late TextEditingController _tituloController;
   late TextEditingController _letraController;
@@ -283,8 +362,11 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
   void initState() {
     super.initState();
     _localFavorito = widget.ehFavorito;
-    _tituloController = TextEditingController(text: widget.hino['titulo']);
-    _letraController = TextEditingController(text: widget.hino['letra']);
+    // Proteção contra nulos nos controllers
+    _tituloController =
+        TextEditingController(text: (widget.hino['titulo'] ?? '').toString());
+    _letraController =
+        TextEditingController(text: (widget.hino['letra'] ?? '').toString());
   }
 
   @override
@@ -334,9 +416,12 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    String numeroHino = (widget.hino['numero'] ?? '').toString();
+
     return Scaffold(
       appBar: AppBar(
-        title: Text("Hino ${widget.hino['numero']}", style: const TextStyle(color: Colors.white)),
+        title: Text("Hino $numeroHino",
+            style: const TextStyle(color: Colors.white)),
         backgroundColor: Colors.orange[800],
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
@@ -366,8 +451,10 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
               onPressed: () {
                 setState(() {
                   _modoEdicao = false;
-                  _tituloController.text = widget.hino['titulo'];
-                  _letraController.text = widget.hino['letra'];
+                  _tituloController.text =
+                      (widget.hino['titulo'] ?? '').toString();
+                  _letraController.text =
+                      (widget.hino['letra'] ?? '').toString();
                 });
               },
             ),
@@ -385,17 +472,20 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
                 Expanded(
                   child: Slider(
                     value: _tamanhoFonte,
-                    min: 14.0, max: 34.0,
+                    min: 14.0,
+                    max: 34.0,
                     activeColor: Colors.orange,
                     inactiveColor: Colors.orange[200],
                     onChanged: (v) => setState(() => _tamanhoFonte = v),
                   ),
                 ),
-                Text("${_tamanhoFonte.toInt()}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                Text("${_tamanhoFonte.toInt()}",
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, color: Colors.orange)),
               ],
             ),
           ),
-          
+
           // CONTEÚDO (MODO LEITURA OU EDIÇÃO)
           Expanded(
             child: Container(
@@ -414,28 +504,29 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
 
   // MODO LEITURA
   Widget _buildModoLeitura() {
+    String titulo = (widget.hino['titulo'] ?? 'Sem Título').toString();
+    String letra = (widget.hino['letra'] ?? '').toString();
+
     return Column(
       children: [
         Text(
-          widget.hino['titulo'],
+          titulo,
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: _tamanhoFonte + 4, 
-            fontWeight: FontWeight.bold, 
-            color: Colors.orange[900], 
-            fontFamily: 'Georgia'
-          ),
+              fontSize: _tamanhoFonte + 4,
+              fontWeight: FontWeight.bold,
+              color: Colors.orange[900],
+              fontFamily: 'Georgia'),
         ),
         const SizedBox(height: 30),
         Text(
-          widget.hino['letra'],
+          letra,
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: _tamanhoFonte, 
-            height: 1.6, 
-            fontFamily: 'Georgia', 
-            color: Colors.black87
-          ),
+              fontSize: _tamanhoFonte,
+              height: 1.6,
+              fontFamily: 'Georgia',
+              color: Colors.black87),
         ),
         const SizedBox(height: 40),
       ],
@@ -465,7 +556,7 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
           maxLines: 2,
         ),
         const SizedBox(height: 20),
-        
+
         // CAMPO LETRA
         TextField(
           controller: _letraController,
@@ -487,7 +578,7 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
           minLines: 10,
         ),
         const SizedBox(height: 20),
-        
+
         // BOTÃO SALVAR GRANDE
         ElevatedButton.icon(
           onPressed: _salvarEdicao,
@@ -497,7 +588,8 @@ class _HymnDetailScreenState extends State<HymnDetailScreen> {
             backgroundColor: Colors.green,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            textStyle:
+                const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ),
         const SizedBox(height: 40),
