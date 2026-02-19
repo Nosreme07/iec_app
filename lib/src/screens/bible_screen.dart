@@ -543,7 +543,17 @@ class BibleStatsView extends StatelessWidget {
       }
     }
 
-    // 3. Gerar PDF
+    // 3. Carregar Imagem
+    pw.MemoryImage? imagemCapa;
+    try {
+      final ByteData bytes = await rootBundle.load('assets/images/capa.png');
+      final Uint8List byteList = bytes.buffer.asUint8List();
+      imagemCapa = pw.MemoryImage(byteList);
+    } catch (e) {
+      debugPrint("Erro ao carregar a imagem capa.png: $e");
+    }
+
+    // 4. Gerar PDF
     final pdf = pw.Document();
 
     Timestamp? startTs = data['start_date'];
@@ -567,6 +577,20 @@ class BibleStatsView extends StatelessWidget {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
+              // CABEÇALHO COM A IMAGEM (CENTRALIZADO)
+              if (imagemCapa != null)
+                pw.Center(
+                  child: pw.Container(
+                    height: 120, // Altura travada 
+                    width: 450, // Largura máxima para não passar da margem e ficar centralizado
+                    margin: const pw.EdgeInsets.only(bottom: 20),
+                    child: pw.Image(
+                      imagemCapa,
+                      fit: pw.BoxFit.contain, 
+                    ),
+                  ),
+                ),
+
               pw.Header(
                 level: 0,
                 child: pw.Text("Relatório de Leitura Bíblica",
