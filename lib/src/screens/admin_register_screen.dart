@@ -41,17 +41,19 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
   final List<String> _cargoOptions = ['Membro', 'Presidente', 'Vice-Presidente', 'Dir. Patrimônio', 'Secretária', '1º Tesoureiro', '2º Tesoureiro', 'Zelador(a)', 'Conselho Fiscal'];
   final List<String> _oficialOptions = ['Nenhum', 'Pastor', 'Presbítero', 'Diácono(a)'];
   
-  // --- LISTA DE ACESSO (Permite criar usuários Financeiros) ---
+  // --- LISTA DE ACESSO ---
   final List<String> _acessoOptions = ['Membro', 'Visitante', 'Administrador', 'Financeiro'];
 
+  // ADICIONADO 'data_falecimento'
   final List<String> _fields = [
-    'nome_completo', 'apelido', 'pai', 'mae', 'nascimento', 'profissao', 'habilitacao', // ADICIONADO 'apelido'
+    'nome_completo', 'apelido', 'pai', 'mae', 'nascimento', 'profissao', 'habilitacao', 
     'naturalidade', 'nacionalidade', 'cpf', 'senha', 
     'endereco', 'numero', 'bairro', 'cidade', 'uf', 'cep', 'complemento',
     'whatsapp', 'telefone', 'email',
     'membro_desde', 'tipo_admissao', 'batismo_aguas', 'igreja_anterior',
     'cargo_anterior', 'data_consagracao', 'data_conversao',
-    'estado_civil', 'data_casamento', 'conjuge', 'filhos', 'observacoes'
+    'estado_civil', 'data_casamento', 'conjuge', 'filhos', 'observacoes',
+    'data_falecimento'
   ];
 
   String? _selectedSexo;
@@ -78,7 +80,6 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
       _selectedCargo = "Membro";
       _selectedOficial = "Nenhum";
       _selectedDepartamento = "Nenhum";
-      // Valor padrão ao criar novo
       _selectedAcesso = "Membro";
     }
   }
@@ -86,22 +87,31 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
   void _loadExistingData() {
     final data = widget.memberData!;
     _controllers.forEach((key, controller) {
-      if (data.containsKey(key)) controller.text = data[key].toString();
+      if (data.containsKey(key) && data[key] != null) {
+        controller.text = data[key].toString();
+      }
     });
 
     if (data.containsKey('foto_url') && data['foto_url'] != null) {
       _existingImageUrl = data['foto_url'];
     }
     
-    // Carrega o consentimento existente
     if (data.containsKey('autoriza_compartilhamento')) {
       _autorizaCompartilhamento = data['autoriza_compartilhamento'] ?? false;
     }
 
+    // LÓGICA DE CARREGAMENTO MELHORADA PARA EVITAR ERROS DE DIGITAÇÃO NO BANCO
     String? loadDrop(String key, List<String> options) {
       if (data[key] == null) return null;
+      String valorDoBanco = data[key].toString().trim().toUpperCase();
+      
+      // Se for situação e tiver 'MEMORIA', força a ser "In Memoriam"
+      if (key == 'situacao' && valorDoBanco.contains('MEMORIA')) {
+        return 'In Memoriam';
+      }
+
       try {
-        return options.firstWhere((e) => e.toUpperCase() == data[key].toString().toUpperCase());
+        return options.firstWhere((e) => e.toUpperCase() == valorDoBanco);
       } catch (e) { return null; }
     }
 
@@ -114,17 +124,11 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
       _selectedCargo = loadDrop('cargo_atual', _cargoOptions);
       _selectedOficial = loadDrop('oficial_igreja', _oficialOptions);
       
-      // --- LÓGICA DE CARREGAMENTO DO ACESSO (Mapeamento Banco -> Tela) ---
       String roleDb = data['role'] ?? 'membro';
-      if (roleDb == 'admin') {
-        _selectedAcesso = 'Administrador';
-      } else if (roleDb == 'financeiro') {
-        _selectedAcesso = 'Financeiro';
-      } else if (roleDb == 'visitante') {
-        _selectedAcesso = 'Visitante';
-      } else {
-        _selectedAcesso = 'Membro';
-      }
+      if (roleDb == 'admin') _selectedAcesso = 'Administrador';
+      else if (roleDb == 'financeiro') _selectedAcesso = 'Financeiro';
+      else if (roleDb == 'visitante') _selectedAcesso = 'Visitante';
+      else _selectedAcesso = 'Membro';
     });
   }
 
@@ -162,7 +166,6 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
   Future<void> _saveMember() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // --- NOVA LÓGICA: PERGUNTA DE CONFIRMAÇÃO SE NÃO ESTIVER MARCADO ---
     if (!_autorizaCompartilhamento) {
       bool? confirm = await showDialog<bool>(
         context: context,
@@ -180,17 +183,13 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(ctx, false); // Não autoriza
-              },
+              onPressed: () => Navigator.pop(ctx, false),
               child: const Text("NÃO", style: TextStyle(color: Colors.red)),
             ),
             ElevatedButton(
               onPressed: () {
-                setState(() {
-                  _autorizaCompartilhamento = true;
-                });
-                Navigator.pop(ctx, true); // Autoriza
+                setState(() => _autorizaCompartilhamento = true);
+                Navigator.pop(ctx, true);
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
               child: const Text("SIM, AUTORIZA", style: TextStyle(color: Colors.white)),
@@ -198,26 +197,20 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
           ],
         ),
       );
-      
-      // Se fechou o diálogo sem responder (null), cancela o salvamento
       if (confirm == null) return;
-      
-      // Se respondeu NÃO (false), continua salvando como false
-      // Se respondeu SIM (true), a variável já foi atualizada acima
     }
 
     setState(() => _isLoading = true);
 
     try {
-      // --- LÓGICA DE SALVAMENTO DO ACESSO (Mapeamento Tela -> Banco) ---
-      String systemRole = 'membro'; // Padrão
+      String systemRole = 'membro';
       if (_selectedAcesso == 'Administrador') systemRole = 'admin';
       if (_selectedAcesso == 'Financeiro') systemRole = 'financeiro';
       if (_selectedAcesso == 'Visitante') systemRole = 'visitante';
       
       Map<String, dynamic> dadosParaSalvar = {
         'role': systemRole,
-        'autoriza_compartilhamento': _autorizaCompartilhamento, // SALVA NO BANCO
+        'autoriza_compartilhamento': _autorizaCompartilhamento,
         'sexo': _selectedSexo?.toUpperCase(),
         'grupo_sanguineo': _selectedSangue?.toUpperCase(),
         'situacao': _selectedSituacao?.toUpperCase(),
@@ -236,6 +229,11 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
           }
         }
       });
+
+      // Se não for In Memoriam, garante que deleta o campo para não ficar sujeira no banco
+      if (_selectedSituacao != 'In Memoriam') {
+         dadosParaSalvar['data_falecimento'] = "";
+      }
 
       String uidFinal = "";
 
@@ -300,7 +298,6 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
           key: _formKey,
           child: Column(
             children: [
-              // FOTO DE PERFIL
               Center(
                 child: Stack(
                   children: [
@@ -342,8 +339,6 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
 
               _buildSectionTitle("1. Dados Pessoais & Acesso"),
               _buildTextField('nome_completo', "Nome Completo", required: true),
-              
-              // --- NOVO CAMPO: APELIDO ---
               _buildTextField('apelido', "Como quer ser chamado (Apelido)", icon: Icons.face),
 
               Container(
@@ -397,8 +392,30 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
               _buildTextField('email', "E-mail Pessoal", icon: Icons.email),
 
               _buildSectionTitle("3. Dados Eclesiásticos"),
-              _buildDropdown("Situação", _situacaoOptions, _selectedSituacao, (val) => setState(() => _selectedSituacao = val)),
-              const SizedBox(height: 10),
+              
+              _buildDropdown("Situação", _situacaoOptions, _selectedSituacao, (val) {
+                setState(() {
+                  _selectedSituacao = val;
+                  if (val != 'In Memoriam') {
+                    _controllers['data_falecimento']?.clear();
+                  }
+                });
+              }),
+              
+              if (_selectedSituacao == 'In Memoriam') ...[
+                const SizedBox(height: 5),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    border: Border.all(color: Colors.grey[400]!),
+                    borderRadius: BorderRadius.circular(8)
+                  ),
+                  child: _buildTextField('data_falecimento', "Data de Falecimento", 
+                      icon: Icons.event_busy, isDate: true, hint: "dd/mm/aaaa", required: true),
+                ),
+                const SizedBox(height: 10),
+              ],
               
               Row(children: [
                 Expanded(child: _buildTextField('membro_desde', "Membro Desde", isDate: true)),
@@ -432,7 +449,6 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
               _buildTextField('observacoes', "Observações Gerais", maxLines: 4),
 
               const SizedBox(height: 20),
-              // --- CAMPO CHECKBOX DE AUTORIZAÇÃO (VISUAL) ---
               Container(
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.indigo.withOpacity(0.3)),
