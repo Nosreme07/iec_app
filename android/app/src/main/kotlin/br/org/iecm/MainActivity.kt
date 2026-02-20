@@ -1,4 +1,4 @@
-package com.example.iec_app
+package br.org.iecm
 
 import io.flutter.embedding.android.FlutterActivity
 

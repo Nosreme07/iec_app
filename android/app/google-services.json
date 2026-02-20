@@ -7,6 +7,35 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:1093422329001:android:085be11f55a999d357cdb8",
+        "android_client_info": {
+          "package_name": "br.org.iecm"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1093422329001-k438gv1smf7dmv9l54dprs9sphhrhhuu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB10uV71twyDkRHoGpQXqRSj7LHXHgYEkU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1093422329001-k438gv1smf7dmv9l54dprs9sphhrhhuu.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:1093422329001:android:6759ff1fe3786ed057cdb8",
         "android_client_info": {
           "package_name": "com.example.iec_app"

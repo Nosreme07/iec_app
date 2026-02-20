@@ -1,3 +1,13 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+// 1. Carregamento do arquivo key.properties que você configurou
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -6,13 +16,22 @@ plugins {
 }
 
 android {
-    // Namespace deve coincidir com o seu applicationId
-    namespace = "com.example.iec_app"
-    compileSdk = 36 // Recomendado 35 para estabilidade atual, ou 36 se já tiver o SDK instalado
+    // ALTERAÇÃO REALIZADA: Namespace atualizado para evitar a restrição "com.example"
+    namespace = "br.org.iecm" 
+    compileSdk = 35 
     ndkVersion = flutter.ndkVersion
 
+    // 2. Configuração da Assinatura de Lançamento (Release)
+    signingConfigs {
+        create("release") {
+            keyAlias = keystoreProperties["keyAlias"] as String?
+            keyPassword = keystoreProperties["keyPassword"] as String?
+            storeFile = keystoreProperties["storeFile"]?.let { file(it) }
+            storePassword = keystoreProperties["storePassword"] as String?
+        }
+    }
+
     compileOptions {
-        // Atualizado para Java 17 para compatibilidade com AGP 8.6.1 e Kotlin 2.0
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -22,8 +41,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.iec_app"
-        minSdk = flutter.minSdkVersion // Definido explicitamente ou via flutter.minSdkVersion
+        // ALTERAÇÃO REALIZADA: ApplicationId atualizado para ser único e profissional
+        applicationId = "br.org.iecm" 
+        minSdk = flutter.minSdkVersion 
         targetSdk = 35 
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -32,9 +52,10 @@ android {
     }
 
     buildTypes {
-        release {
-            // Em produção, use uma chave real. Aqui mantive sua config de debug.
-            signingConfig = signingConfigs.getByName("debug")
+        getByName("release") {
+            // 3. Vínculo CRÍTICO: Usando a assinatura de release para a Play Store
+            signingConfig = signingConfigs.getByName("release")
+            
             isMinifyEnabled = false
             isShrinkResources = false
         }
@@ -51,18 +72,14 @@ flutter {
 }
 
 dependencies {
-    // Essencial para suportar multidex em aparelhos antigos
     implementation("androidx.multidex:multidex:2.0.1")
-    
-    // Importa o BoM do Firebase para alinhar versões automaticamente
     implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
     implementation("com.google.firebase:firebase-analytics")
 }
 
-// BLOCO CRÍTICO: Resolve conflitos de classes duplicadas (lStar, etc)
+// Resolução de conflitos de classes duplicadas
 configurations.all {
     resolutionStrategy {
-        // Força versões estáveis que não possuem conflitos entre si
         force("androidx.core:core:1.13.1")
         force("androidx.core:core-ktx:1.13.1")
         force("androidx.activity:activity:1.9.3")
@@ -73,7 +90,6 @@ configurations.all {
         force("androidx.appcompat:appcompat-resources:1.6.1")
         force("com.google.android.material:material:1.9.0")
 
-        // Garante que nenhuma dependência transitiva puxe versões problemáticas
         eachDependency {
             if (requested.group == "androidx.core" && requested.name == "core") {
                 useVersion("1.13.1")
