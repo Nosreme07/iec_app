@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:shared_preferences/shared_preferences.dart';
 
 // --- INICIALIZAÇÃO ---
 void main() async {
@@ -79,7 +80,21 @@ class _BibleScreenState extends State<BibleScreen> {
   @override
   void initState() {
     super.initState();
-    _loadBible();
+    _loadSavedVersion(); // Alterado para buscar a versão salva primeiro
+  }
+
+  // --- NOVA FUNÇÃO PARA BUSCAR A VERSÃO SALVA ---
+  Future<void> _loadSavedVersion() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedVersion = prefs.getString('selected_version');
+
+    if (savedVersion != null && _versions.containsKey(savedVersion)) {
+      setState(() {
+        _currentVersion = savedVersion;
+      });
+    }
+    
+    _loadBible(); 
   }
 
   // Carrega a Bíblia baseado na versão selecionada
@@ -109,12 +124,16 @@ class _BibleScreenState extends State<BibleScreen> {
     }
   }
 
-  void _changeVersion(String? newVersion) {
+  // Alterado para salvar a nova versão no celular
+  void _changeVersion(String? newVersion) async {
     if (newVersion != null && newVersion != _currentVersion) {
       setState(() {
         _currentVersion = newVersion;
       });
       _loadBible();
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('selected_version', newVersion);
     }
   }
 

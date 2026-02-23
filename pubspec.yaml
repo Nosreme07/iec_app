@@ -2,7 +2,7 @@ name: iec_app
 description: "App da Igreja Evangélica Congregacional em Moreno."
 publish_to: 'none' # Impede a publicação acidental no pub.dev
 
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
