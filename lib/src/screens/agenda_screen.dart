@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'add_event_screen.dart'; // Certifique-se que este arquivo existe no seu projeto
+import 'add_event_screen.dart'; 
 
 class AgendaScreen extends StatefulWidget {
   const AgendaScreen({super.key});
@@ -42,24 +42,18 @@ class _AgendaScreenState extends State<AgendaScreen> {
   }
 
   void _calcularInicioSemana() {
-    // Ajusta para pegar sempre a segunda-feira ou domingo anterior como inicio
     _inicioDaSemana = _dataFocada.subtract(Duration(days: _dataFocada.weekday - 1));
-    // Remove horas/minutos para garantir comparação de datas limpa
     _inicioDaSemana = DateTime(_inicioDaSemana.year, _inicioDaSemana.month, _inicioDaSemana.day);
   }
 
   String _getSemanaId() {
-    // Cria um ID único para a semana, ex: "2023-10-23"
     return DateFormat('yyyy-MM-dd').format(_inicioDaSemana);
   }
 
   Future<void> _carregarPrioridades() async {
     String semanaId = _getSemanaId();
-    // Limpa o campo enquanto carrega ou se não houver dados
     if (mounted) {
-       setState(() {
-         // Opcional: _prioridadesController.text = "Carregando..."; 
-       });
+       setState(() {});
     }
 
     try {
@@ -76,27 +70,23 @@ class _AgendaScreenState extends State<AgendaScreen> {
     }
   }
 
-  // --- FUNÇÃO DE SALVAR CORRIGIDA ---
   Future<void> _salvarPrioridades() async {
     setState(() => _isSavingPrioridades = true);
     
     try {
       String semanaId = _getSemanaId();
       
-      // Correção: Usar SetOptions(merge: true) para evitar sobrescrever dados
       await FirebaseFirestore.instance.collection('agenda_avisos').doc(semanaId).set({
         'texto': _prioridadesController.text,
         'ultima_atualizacao': FieldValue.serverTimestamp(),
-        'autor_uid': FirebaseAuth.instance.currentUser?.uid, // Útil para segurança
+        'autor_uid': FirebaseAuth.instance.currentUser?.uid, 
       }, SetOptions(merge: true));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avisos salvos com sucesso!"), backgroundColor: Colors.green));
-        FocusScope.of(context).unfocus(); // Fecha o teclado
+        FocusScope.of(context).unfocus(); 
       }
     } catch (e) {
-      // Exibe o erro no console e na tela
-      print("ERRO DETALHADO AO SALVAR: $e"); 
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao salvar: $e"), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isSavingPrioridades = false);
@@ -132,17 +122,18 @@ class _AgendaScreenState extends State<AgendaScreen> {
     if (confirm) await FirebaseFirestore.instance.collection('agenda').doc(id).delete();
   }
 
-  // --- POPUP COM DETALHES ---
   void _showEventDetails(String id, Map<String, dynamic> data, bool canManage) {
-    
     Timestamp? ts = data['data_hora'] as Timestamp?;
     String hora = ts != null ? DateFormat('HH:mm').format(ts.toDate()) : "--:--";
     
-    String titulo = data['titulo'] ?? data['tipo'] ?? "Evento";
-    String local = data['local'] ?? "Igreja";
-    String dirigente = data['dirigente'] ?? "Não informado";
-    String pregador = data['pregador'] ?? "Não informado";
-    String descricao = data['descricao'] ?? "";
+    String tipo = (data['tipo'] ?? "").toString();
+    String tituloCampo = (data['titulo'] ?? "").toString().trim();
+    String titulo = tituloCampo.isNotEmpty ? tituloCampo : (tipo.isNotEmpty ? tipo : "Evento");
+
+    String local = (data['local'] ?? "Igreja").toString();
+    String dirigente = (data['dirigente'] ?? "Não informado").toString();
+    String pregador = (data['pregador'] ?? "Não informado").toString();
+    String descricao = (data['descricao'] ?? "").toString();
 
     showDialog(
       context: context,
@@ -232,7 +223,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
     if (user == null) return const Center(child: CircularProgressIndicator());
 
-    // 1. STREAM PRINCIPAL: Verifica permissões e monta a tela
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
       builder: (context, userSnapshot) {
@@ -291,13 +281,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   crossAxisSpacing: 10,
                   mainAxisSpacing: 10,
                 ),
-                itemCount: 8, // 7 dias + 1 card de avisos
+                itemCount: 8, 
                 itemBuilder: (context, index) {
                   if (index < 7) {
                     DateTime dayDate = _inicioDaSemana.add(Duration(days: index));
                     return _buildDayCard(dayDate, allDocs, canManage);
                   } else {
-                    // O último card é o de Avisos/Prioridades
                     return _buildPriorityCard(canManage);
                   }
                 },
@@ -314,7 +303,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
     String diaMes = DateFormat('dd/MM').format(dayDate);
     bool isToday = dayDate.day == DateTime.now().day && dayDate.month == DateTime.now().month && dayDate.year == DateTime.now().year;
 
-    // Filtra eventos deste dia específico
     List<QueryDocumentSnapshot> dayEvents = allDocs.where((doc) {
       Timestamp? ts = doc['data_hora'] as Timestamp?;
       if (ts == null) return false;
@@ -322,7 +310,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
       return dt.year == dayDate.year && dt.month == dayDate.month && dt.day == dayDate.day;
     }).toList();
 
-    // Ordena por horário
     dayEvents.sort((a, b) => a['data_hora'].compareTo(b['data_hora']));
 
     return Container(
@@ -356,10 +343,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     Timestamp? ts = data['data_hora'] as Timestamp?;
                     String hora = ts != null ? DateFormat('HH:mm').format(ts.toDate()) : "--:--";
                     
-                    String evento = data['tipo'] ?? (data['titulo'] ?? "Evento");
-                    String local = data['local'] ?? "";
-                    String dirigente = data['dirigente'] ?? "";
-                    String pregador = data['pregador'] ?? "";
+                    String tipo = (data['tipo'] ?? "Evento").toString().trim();
+                    String tituloCampo = (data['titulo'] ?? "").toString().trim();
+                    String local = (data['local'] ?? "").toString().trim();
+                    String dirigente = (data['dirigente'] ?? "").toString().trim();
+                    String pregador = (data['pregador'] ?? "").toString().trim();
+                    
                     final colors = _eventColors[i % _eventColors.length];
 
                     return InkWell(
@@ -376,15 +365,35 @@ class _AgendaScreenState extends State<AgendaScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // 1. HORA E TIPO DO EVENTO
                             Text(
-                              "$hora - ${evento.toUpperCase()}",
+                              "${hora}h - $tipo",
                               style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.black87),
-                              maxLines: 2, overflow: TextOverflow.ellipsis,
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 3),
-                            if (local.isNotEmpty) Row(children: [Icon(Icons.location_on, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text(local, style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
-                            if (dirigente.isNotEmpty) Row(children: [Icon(Icons.person, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text("Dir: $dirigente", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
-                            if (pregador.isNotEmpty) Row(children: [Icon(Icons.mic, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text("Preg: $pregador", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
+                            
+                            // 2. NOME DO EVENTO (Se houver)
+                            if (tituloCampo.isNotEmpty) ...[
+                              Text(
+                                tituloCampo,
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo[900]),
+                                maxLines: 2, overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 3),
+                            ],
+                            
+                            // 3. LOCAL
+                            if (local.isNotEmpty) 
+                              Row(children: [Icon(Icons.location_on, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text(local, style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
+                            
+                            // 4. DIRIGENTE
+                            if (dirigente.isNotEmpty) 
+                              Row(children: [Icon(Icons.person, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text("Dir. $dirigente", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
+                            
+                            // 5. PREGADOR
+                            if (pregador.isNotEmpty) 
+                              Row(children: [Icon(Icons.mic, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text("Preg. $pregador", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
                           ],
                         ),
                       ),
@@ -428,7 +437,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 const Expanded(
                   child: Text("Avisos", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown)),
                 ),
-                // ÍCONE DE SALVAR (SÓ SE TIVER PERMISSÃO)
                 if (canManage)
                   SizedBox(
                     height: 24,

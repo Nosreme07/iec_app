@@ -6,7 +6,7 @@ class AddEventScreen extends StatefulWidget {
   final String? eventId;
   final Map<String, dynamic>? eventData;
   final DateTime? preSelectedDate;
-  final bool isAnnual; // Novo parâmetro para saber se veio da Agenda Anual
+  final bool isAnnual; // Parâmetro para saber se veio da Agenda Anual
 
   const AddEventScreen({
     super.key, 
@@ -23,7 +23,7 @@ class AddEventScreen extends StatefulWidget {
 class _AddEventScreenState extends State<AddEventScreen> {
   final _formKey = GlobalKey<FormState>();
   
-  final _tituloController = TextEditingController(); // Trazendo de volta para eventos anuais
+  final _tituloController = TextEditingController(); 
   final _localController = TextEditingController();
   final _dirigenteController = TextEditingController();
   final _pregadorController = TextEditingController();
@@ -44,6 +44,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
     'Reunião',
     'Assembleia',
     'Evento Especial',
+    'Outro',          // Pode ser útil
+    'Louvorzão',
     'Congresso',      // Útil para agenda anual
     'Festividade',    // Útil para agenda anual
     'Santa Ceia',     // Útil para agenda anual
@@ -86,6 +88,16 @@ class _AddEventScreenState extends State<AddEventScreen> {
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: widget.isAnnual ? Colors.purple : Colors.indigo,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) setState(() => _selectedDate = picked);
   }
@@ -97,7 +109,14 @@ class _AddEventScreenState extends State<AddEventScreen> {
       builder: (BuildContext context, Widget? child) {
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-          child: child!,
+          child: Theme(
+             data: Theme.of(context).copyWith(
+               colorScheme: ColorScheme.light(
+                 primary: widget.isAnnual ? Colors.purple : Colors.indigo,
+               ),
+             ),
+             child: child!,
+          ),
         );
       },
     );
@@ -118,10 +137,10 @@ class _AddEventScreenState extends State<AddEventScreen> {
         _selectedTime.hour, _selectedTime.minute,
       );
 
-      // Se for anual, usa o Título digitado. Se for semanal, usa o Tipo como título.
-      String tituloFinal = widget.isAnnual && _tituloController.text.isNotEmpty 
-          ? _tituloController.text.toUpperCase() 
-          : _selectedTipo!.toUpperCase();
+      // MODIFICAÇÃO: A lógica do título é agora igual para todos.
+      // Usa o que foi digitado no campo Nome. Se estiver vazio, não salva nada extra para o banco, 
+      // e os cards mostrarão apenas o Tipo do Evento (como definido nos códigos das agendas).
+      String tituloFinal = _tituloController.text.trim();
 
       Map<String, dynamic> data = {
         'titulo': tituloFinal, // Salva o nome para exibição
@@ -167,7 +186,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // SELEÇÃO DE DATA (Importante para Anual)
+              // SELEÇÃO DE DATA 
               InkWell(
                 onTap: _pickDate,
                 child: Container(
@@ -191,25 +210,25 @@ class _AddEventScreenState extends State<AddEventScreen> {
                 ),
               ),
 
-              // CAMPO NOME DO EVENTO (Só aparece se for Anual)
-              if (widget.isAnnual) ...[
-                TextFormField(
-                  controller: _tituloController,
-                  decoration: const InputDecoration(
-                    labelText: "Nome do Evento (Opcional)", 
-                    hintText: "Ex: Congresso de Jovens",
-                    border: OutlineInputBorder()
-                  ),
-                  textCapitalization: TextCapitalization.sentences,
-                ),
-                const SizedBox(height: 15),
-              ],
-              
+              // CAMPO TIPO DO EVENTO
               DropdownButtonFormField(
                 value: _selectedTipo,
                 items: _tiposEventos.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (v) => setState(() => _selectedTipo = v.toString()),
                 decoration: const InputDecoration(labelText: "Tipo de Evento *", border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 15),
+
+              // MODIFICAÇÃO: CAMPO NOME DO EVENTO (Agora aparece sempre, seja anual ou semanal)
+              TextFormField(
+                controller: _tituloController,
+                decoration: const InputDecoration(
+                  labelText: "Nome do Evento (Opcional)", 
+                  hintText: "Ex: Culto de Aniversário, Congresso de Jovens...",
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.title)
+                ),
+                textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: 15),
 
@@ -227,19 +246,17 @@ class _AddEventScreenState extends State<AddEventScreen> {
                 decoration: const InputDecoration(labelText: "Local", border: OutlineInputBorder(), prefixIcon: Icon(Icons.location_on)),
               ),
               
-              // Campos extras opcionais
-              if (!widget.isAnnual) ...[
-                const SizedBox(height: 15),
-                TextFormField(
-                  controller: _dirigenteController,
-                  decoration: const InputDecoration(labelText: "Dirigente", border: OutlineInputBorder(), prefixIcon: Icon(Icons.person)),
-                ),
-                const SizedBox(height: 15),
-                TextFormField(
-                  controller: _pregadorController,
-                  decoration: const InputDecoration(labelText: "Pregador", border: OutlineInputBorder(), prefixIcon: Icon(Icons.mic)),
-                ),
-              ],
+              // MODIFICAÇÃO: Campos extras (Dirigente e Pregador) agora aparecem sempre
+              const SizedBox(height: 15),
+              TextFormField(
+                controller: _dirigenteController,
+                decoration: const InputDecoration(labelText: "Dirigente", border: OutlineInputBorder(), prefixIcon: Icon(Icons.person)),
+              ),
+              const SizedBox(height: 15),
+              TextFormField(
+                controller: _pregadorController,
+                decoration: const InputDecoration(labelText: "Pregador", border: OutlineInputBorder(), prefixIcon: Icon(Icons.mic)),
+              ),
 
               const SizedBox(height: 30),
               SizedBox(

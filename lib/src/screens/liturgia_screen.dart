@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+// IMPORTANTE: Ajuste o caminho abaixo para onde está o seu arquivo hymnal.dart
+import 'hymnal_screen.dart'; 
 
 class LiturgiaScreen extends StatefulWidget {
   const LiturgiaScreen({super.key});
@@ -23,8 +25,8 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
   bool get _canEdit => _userRole == 'admin' || _userRole == 'financeiro';
 
   final List<String> _opcoesEventos = [
-    'Oração Inicial', 'Oração de Confissão', 'Momento de Intercessão', 'Oração Final',
-    'Leitura Bíblica', 'Leitura Bíblica Alternada', 'Louvor', 'Ofertório', 'Mensagem Bíblica', 'Santa Ceia', 'Outro'
+    'Prelúdio', 'Poslúdio', 'Oração Inicial', 'Oração de Confissão', 'Momento de Intercessão', 'Oração Final',
+    'Leitura Bíblica', 'Leitura Bíblica Alternada', 'Louvor','Salmos e Hinos', 'Ofertório', 'Mensagem Bíblica', 'Santa Ceia', 'Outro'
   ];
 
   @override
@@ -56,7 +58,8 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
     }
   }
 
-  String _getDocId() => DateFormat('yyyy-MM-dd').format(_dataFixa);
+  // MODIFICAÇÃO: Usando um ID fixo para a liturgia nunca sumir, até que seja limpa.
+  String _getDocId() => 'liturgia_atual'; 
   String _getDataFormatada() => DateFormat('dd/MM/yyyy').format(_dataFixa);
 
   // --- NOVA FUNÇÃO: LIMPAR TUDO ---
@@ -108,12 +111,13 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
     for (var item in _itensLocais) {
       final String titulo = (item['titulo'] ?? "Evento").toString();
       final String detalhes = (item['detalhes'] ?? "").toString();
+      final String descricao = (item['descricao'] ?? "").toString();
       
       String emoji = "🔹";
       String tituloLower = titulo.toLowerCase();
       
       if (tituloLower.contains("oração") || tituloLower.contains("intercessão")) emoji = "🙏";
-      else if (tituloLower.contains("louvor") || tituloLower.contains("ofertório")) emoji = "🎵";
+      else if (tituloLower.contains("louvor") || tituloLower.contains("ofertório") || tituloLower.contains("hinos")) emoji = "🎵";
       else if (tituloLower.contains("leitura")) emoji = "📖";
       else if (tituloLower.contains("mensagem") || tituloLower.contains("palavra")) emoji = "📢";
       else if (tituloLower.contains("ceia")) emoji = "🍷";
@@ -122,6 +126,9 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
       
       if (detalhes.isNotEmpty) {
         msg.writeln("   _${detalhes}_");
+      }
+      if (descricao.isNotEmpty) {
+        msg.writeln("   _${descricao}_");
       }
       msg.writeln(""); 
     }
@@ -147,7 +154,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
     final t = titulo.toLowerCase();
     if (t.contains('oração') || t.contains('intercessão')) return 'assets/images/oração.png';
     else if (t.contains('leitura')) return 'assets/images/leitura.png';
-    else if (t.contains('louvor') || t.contains('ofertório')) return 'assets/images/louvor.png';
+    else if (t.contains('louvor') || t.contains('ofertório') || t.contains('hinos')) return 'assets/images/louvor.png';
     else if (t.contains('mensagem')) return 'assets/images/mensagem.png';
     else if (t.contains('ceia')) return 'assets/images/ceia.png';
     return 'assets/images/outro.png';
@@ -164,6 +171,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
             _itensLocais = dadosBrutos.map((e) => {
               'titulo': e['titulo'] ?? 'Evento',
               'detalhes': e['detalhes'] ?? '',
+              'descricao': e['descricao'] ?? '', // Carrega a nova descrição
               'concluido': e['concluido'] ?? false, 
             }).toList();
             _isLoading = false;
@@ -184,7 +192,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
       await FirebaseFirestore.instance.collection('liturgia').doc(_getDocId()).set({
         'direcao': _direcaoLocal,
         'itens': _itensLocais,
-        'data_referencia': Timestamp.fromDate(_dataFixa),
+        'data_referencia': Timestamp.fromDate(_dataFixa), // Registra o momento da última alteração
       }, SetOptions(merge: true));
       if (mounted) {
         Navigator.pop(context); 
@@ -221,6 +229,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
     if (!_canEdit) return;
     String? tipoSelecionado = itemExistente?['titulo'] ?? _opcoesEventos.first;
     final detalhesController = TextEditingController(text: itemExistente?['detalhes'] ?? '');
+    final descricaoController = TextEditingController(text: itemExistente?['descricao'] ?? '');
 
     showDialog(
       context: context,
@@ -235,22 +244,32 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
                 Text(itemExistente == null ? "Novo Evento" : "Editar Evento"),
               ],
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  value: tipoSelecionado,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: "Tipo", border: OutlineInputBorder()),
-                  items: _opcoesEventos.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                  onChanged: (val) => setStateDialog(() => tipoSelecionado = val),
-                ),
-                const SizedBox(height: 15),
-                TextField(
-                  controller: detalhesController, 
-                  decoration: const InputDecoration(labelText: "Detalhes (Versículo, Hino...)", border: OutlineInputBorder()),
-                ),
-              ],
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    value: tipoSelecionado,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: "Tipo", border: OutlineInputBorder()),
+                    items: _opcoesEventos.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                    onChanged: (val) => setStateDialog(() => tipoSelecionado = val),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: detalhesController, 
+                    decoration: const InputDecoration(labelText: "Detalhes (Versículo, Hino...)", border: OutlineInputBorder()),
+                  ),
+                  // MODIFICAÇÃO: Se for 'Outro', exibe também o campo de Descrição
+                  if (tipoSelecionado == 'Outro') ...[
+                    const SizedBox(height: 15),
+                    TextField(
+                      controller: descricaoController, 
+                      decoration: const InputDecoration(labelText: "Descrição do Evento", border: OutlineInputBorder()),
+                    ),
+                  ],
+                ],
+              ),
             ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
@@ -259,6 +278,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
                   final novoItem = {
                     'titulo': tipoSelecionado, 
                     'detalhes': detalhesController.text,
+                    'descricao': tipoSelecionado == 'Outro' ? descricaoController.text : '',
                     'concluido': itemExistente?['concluido'] ?? false 
                   };
                   setState(() {
@@ -286,15 +306,12 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          // BOTÕES DE AÇÃO NA BARRA SUPERIOR
           if (_canEdit) ...[
-            // Botão Limpar
             IconButton(
               icon: const Icon(Icons.delete_sweep, color: Colors.white), 
               tooltip: "Limpar Liturgia",
               onPressed: _limparLiturgia,
             ),
-            // Botão WhatsApp
             IconButton(
               icon: const Icon(Icons.share, color: Colors.white),
               tooltip: "Enviar no WhatsApp",
@@ -342,7 +359,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
                       background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
                       onDismissed: (_) {
                         setState(() {
-                          _itensLocais.remove(item); // Remove o objeto específico para evitar erro de índice
+                          _itensLocais.removeAt(index);
                         });
                       },
                       child: _buildCardItem(item, isConcluido, imagePath, index),
@@ -378,10 +395,36 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
         contentPadding: const EdgeInsets.only(left: 16, top: 4, bottom: 4, right: 8),
         leading: Opacity(opacity: isConcluido ? 0.5 : 1.0, child: Image.asset(imagePath, width: 40, height: 40, errorBuilder: (c,o,s) => const Icon(Icons.broken_image))),
         title: Text(item['titulo'], style: TextStyle(fontWeight: FontWeight.bold, decoration: isConcluido ? TextDecoration.lineThrough : null, color: isConcluido ? Colors.grey : Colors.black87)),
-        subtitle: item['detalhes'] != null && item['detalhes'].isNotEmpty ? Text(item['detalhes'], style: TextStyle(decoration: isConcluido ? TextDecoration.lineThrough : null)) : null,
-        onTap: _canEdit ? () { setState(() { item['concluido'] = !isConcluido; }); } : null,
+        
+        // MODIFICAÇÃO: Exibindo Detalhes e Descrição (se houver)
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (item['detalhes'] != null && item['detalhes'].toString().isNotEmpty)
+              Text(item['detalhes'], style: TextStyle(decoration: isConcluido ? TextDecoration.lineThrough : null)),
+            if (item['descricao'] != null && item['descricao'].toString().isNotEmpty)
+              Text(item['descricao'], style: TextStyle(color: Colors.grey[700], decoration: isConcluido ? TextDecoration.lineThrough : null)),
+          ],
+        ),
+
+        // MODIFICAÇÃO: Roteamento para página de hinos ou marcar como concluído
+        onTap: () {
+          if (item['titulo'] == 'Salmos e Hinos') {
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()));
+          } else if (_canEdit) {
+            setState(() { item['concluido'] = !isConcluido; });
+          }
+        },
+
+        // MODIFICAÇÃO: Botões explícitos de Editar e Excluir lado a lado
         trailing: _canEdit 
-          ? Row(mainAxisSize: MainAxisSize.min, children: [IconButton(icon: const Icon(Icons.edit, color: Colors.orange, size: 20), onPressed: () => _showItemDialog(itemExistente: item, index: index), tooltip: "Editar"), Icon(isConcluido ? Icons.check_circle : Icons.circle_outlined, color: isConcluido ? Colors.green : Colors.grey, size: 28)])
+          ? Row(
+              mainAxisSize: MainAxisSize.min, 
+              children: [
+                IconButton(icon: const Icon(Icons.edit, color: Colors.orange, size: 20), onPressed: () => _showItemDialog(itemExistente: item, index: index), tooltip: "Editar"), 
+                IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () => setState(() => _itensLocais.removeAt(index)), tooltip: "Excluir"),
+                Icon(isConcluido ? Icons.check_circle : Icons.circle_outlined, color: isConcluido ? Colors.green : Colors.grey, size: 28)
+              ])
           : (isConcluido ? const Icon(Icons.check_circle, color: Colors.green, size: 28) : null), 
       ),
     );

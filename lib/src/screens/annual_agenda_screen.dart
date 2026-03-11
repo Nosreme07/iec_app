@@ -33,7 +33,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
     );
   }
 
-  // --- FUNÇÃO DE IMPRESSÃO ---
   Future<void> _printCalendar() async {
     DateTime inicioAno = DateTime(_anoSelecionado, 1, 1);
     DateTime fimAno = DateTime(_anoSelecionado, 12, 31, 23, 59, 59);
@@ -62,7 +61,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
     }
   }
 
-  // --- LÓGICA DE EDIÇÃO ---
   void _editAnnualEvent(String id, Map<String, dynamic> data) {
     Navigator.pop(context);
     Navigator.push(
@@ -77,7 +75,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
     );
   }
 
-  // --- LÓGICA DE EXCLUSÃO ---
   Future<void> _deleteEvent(String id) async {
     Navigator.pop(context); 
     
@@ -104,7 +101,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
 
     if (user == null) return const Center(child: CircularProgressIndicator());
 
-    // 1. STREAM PARA VERIFICAR PERMISSÕES
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
       builder: (context, userSnapshot) {
@@ -113,8 +109,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
         if (userSnapshot.hasData && userSnapshot.data!.exists) {
            final userData = userSnapshot.data!.data() as Map<String, dynamic>;
            String role = userData['role'] ?? 'membro';
-           
-           // --- MUDANÇA: Admin OU Financeiro têm poder total ---
            canManage = role == 'admin' || role == 'financeiro';
         }
 
@@ -133,7 +127,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
               
               const SizedBox(width: 10),
               
-              // --- BOTÃO DE IMPRIMIR ---
               IconButton(
                 icon: const Icon(Icons.print, size: 22),
                 tooltip: "Exportar PDF",
@@ -144,7 +137,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
           ),
           backgroundColor: Colors.grey[100],
           
-          // BOTÃO NOVO EVENTO (SÓ PARA QUEM TEM PERMISSÃO)
           floatingActionButton: canManage 
             ? FloatingActionButton.extended(
                 onPressed: _addAnnualEvent,
@@ -154,7 +146,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
               )
             : null,
           
-          // 2. STREAM DA AGENDA
           body: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('agenda')
@@ -173,7 +164,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
                 itemCount: 12,
                 itemBuilder: (context, index) {
                   int mes = index + 1;
-                  // Passamos canManage para o widget do mês
                   return _buildMonthGrid(mes, eventosAnuais, canManage);
                 },
               );
@@ -188,7 +178,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
     DateTime dataBase = DateTime(_anoSelecionado, month, 1);
     String nomeMes = DateFormat('MMMM', 'pt_BR').format(dataBase);
     
-    // Filtra eventos deste mês
     List<DocumentSnapshot> eventosMes = eventosDoAno.where((doc) {
       DateTime data = (doc['data_hora'] as Timestamp).toDate();
       return data.month == month;
@@ -251,7 +240,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
                     bool temEvento = eventosDia.isNotEmpty;
 
                     return InkWell(
-                      // Passamos canManage para o popup
                       onTap: temEvento ? () => _showEventDetails(dia, month, eventosDia, canManage) : null,
                       borderRadius: BorderRadius.circular(20),
                       child: Container(
@@ -305,7 +293,12 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
                 var doc = eventos[i];
                 var data = doc.data() as Map<String, dynamic>;
                 String hora = DateFormat('HH:mm').format((data['data_hora'] as Timestamp).toDate());
-                String titulo = data['titulo'] ?? data['tipo'];
+                
+                // REGRA SIMPLIFICADA E DIRETA PARA A LISTA
+                String tipo = data['tipo'] ?? "";
+                String tituloCampo = data['titulo'] ?? "";
+                String titulo = tituloCampo.isNotEmpty ? tituloCampo : (tipo.isNotEmpty ? tipo : "Evento Anual");
+
                 String local = data['local'] ?? "Local não informado";
 
                 return ListTile(
@@ -324,7 +317,6 @@ class _AnnualAgendaScreenState extends State<AnnualAgendaScreen> {
                         Text("Dir: ${data['dirigente']}", style: TextStyle(fontSize: 11, color: Colors.grey[600])),
                     ],
                   ),
-                  // BOTÕES DE AÇÃO (SÓ SE TIVER PERMISSÃO)
                   trailing: canManage 
                     ? Row(
                         mainAxisSize: MainAxisSize.min,

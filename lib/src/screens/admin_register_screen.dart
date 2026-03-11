@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart'; // ADICIONADO PARA LER BYTES (WEB E MOBILE)
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -23,11 +23,10 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
   bool _isLoading = false;
   bool _isEditing = false;
   
-  // NOVA VARIÁVEL DE CONSENTIMENTO
   bool _autorizaCompartilhamento = false;
 
-  // Variáveis da Imagem
-  File? _imageFile;
+  // MODIFICAÇÃO: Usando Uint8List em vez de File para funcionar na WEB e no Mobile
+  Uint8List? _imageBytes;
   String? _existingImageUrl;
   final ImagePicker _picker = ImagePicker();
 
@@ -41,10 +40,8 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
   final List<String> _cargoOptions = ['Membro', 'Presidente', 'Vice-Presidente', 'Dir. Patrimônio', 'Secretária', '1º Tesoureiro', '2º Tesoureiro', 'Zelador(a)', 'Conselho Fiscal'];
   final List<String> _oficialOptions = ['Nenhum', 'Pastor', 'Presbítero', 'Diácono(a)'];
   
-  // --- LISTA DE ACESSO ---
   final List<String> _acessoOptions = ['Membro', 'Visitante', 'Administrador', 'Financeiro'];
 
-  // ADICIONADO 'data_falecimento'
   final List<String> _fields = [
     'nome_completo', 'apelido', 'pai', 'mae', 'nascimento', 'profissao', 'habilitacao', 
     'naturalidade', 'nacionalidade', 'cpf', 'senha', 
@@ -100,12 +97,10 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
       _autorizaCompartilhamento = data['autoriza_compartilhamento'] ?? false;
     }
 
-    // LÓGICA DE CARREGAMENTO MELHORADA PARA EVITAR ERROS DE DIGITAÇÃO NO BANCO
     String? loadDrop(String key, List<String> options) {
       if (data[key] == null) return null;
       String valorDoBanco = data[key].toString().trim().toUpperCase();
       
-      // Se for situação e tiver 'MEMORIA', força a ser "In Memoriam"
       if (key == 'situacao' && valorDoBanco.contains('MEMORIA')) {
         return 'In Memoriam';
       }
@@ -132,12 +127,14 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
     });
   }
 
+  // MODIFICAÇÃO: Lendo a imagem como bytes para suportar a web
   Future<void> _pickImage() async {
     try {
       final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
       if (pickedFile != null) {
+        final bytes = await pickedFile.readAsBytes(); // Isso funciona no celular e na web
         setState(() {
-          _imageFile = File(pickedFile.path);
+          _imageBytes = bytes;
         });
       }
     } catch (e) {
@@ -145,11 +142,16 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
     }
   }
 
+  // MODIFICAÇÃO: Usando putData em vez de putFile e setando metadata
   Future<String?> _uploadImage(String userId) async {
-    if (_imageFile == null) return _existingImageUrl;
+    if (_imageBytes == null) return _existingImageUrl;
     try {
       final storageRef = FirebaseStorage.instance.ref().child('profile_photos/$userId.jpg');
-      await storageRef.putFile(_imageFile!);
+      
+      // Metadata informa ao Storage que é uma imagem, evitando bugs no navegador
+      final metadata = SettableMetadata(contentType: 'image/jpeg');
+      
+      await storageRef.putData(_imageBytes!, metadata);
       return await storageRef.getDownloadURL();
     } catch (e) {
       print("Erro no upload: $e");
@@ -230,7 +232,6 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
         }
       });
 
-      // Se não for In Memoriam, garante que deleta o campo para não ficar sujeira no banco
       if (_selectedSituacao != 'In Memoriam') {
          dadosParaSalvar['data_falecimento'] = "";
       }
@@ -304,10 +305,11 @@ class _AdminRegisterScreenState extends State<AdminRegisterScreen> {
                     CircleAvatar(
                       radius: 60,
                       backgroundColor: Colors.grey[300],
-                      backgroundImage: _imageFile != null 
-                          ? FileImage(_imageFile!) as ImageProvider 
+                      // MODIFICAÇÃO: Usando MemoryImage para as renderizar os bytes da foto selecionada
+                      backgroundImage: _imageBytes != null 
+                          ? MemoryImage(_imageBytes!) as ImageProvider 
                           : (_existingImageUrl != null ? NetworkImage(_existingImageUrl!) : null),
-                      child: (_imageFile == null && _existingImageUrl == null) 
+                      child: (_imageBytes == null && _existingImageUrl == null) 
                           ? const Icon(Icons.person, size: 60, color: Colors.grey) 
                           : null,
                     ),
