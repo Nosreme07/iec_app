@@ -7,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 // Certifique-se que estes arquivos existem no seu projeto com estes nomes
 import 'add_event_screen.dart'; 
 import '../services/pdf_generator.dart'; 
+import 'scale_screen.dart'; // <-- IMPORT DA TELA DE ESCALA ADICIONADO AQUI
 
 // ==========================================
 // TELA PRINCIPAL (CONTROLLER DAS ABAS)
@@ -18,10 +19,10 @@ class UnifiedAgendaScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // DefaultTabController gerencia a troca entre as abas
     return DefaultTabController(
-      length: 2, // Quantidade de abas
+      length: 3, // <-- MUDOU DE 2 PARA 3 ABAS
       child: Scaffold(
         appBar: AppBar(
-          title: const Text("Agenda da Igreja", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          title: const Text("Agenda & Escalas", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           backgroundColor: Colors.blue[900], 
           iconTheme: const IconThemeData(color: Colors.white),
           // A TabBar fica na parte inferior da AppBar
@@ -32,6 +33,7 @@ class UnifiedAgendaScreen extends StatelessWidget {
             tabs: [
               Tab(text: "SEMANAL", icon: Icon(Icons.calendar_view_week)),
               Tab(text: "ANUAL", icon: Icon(Icons.calendar_month)),
+              Tab(text: "ESCALA", icon: Icon(Icons.view_timeline)), // <-- NOVA ABA AQUI
             ],
           ),
         ),
@@ -39,6 +41,7 @@ class UnifiedAgendaScreen extends StatelessWidget {
           children: [
             WeeklyAgendaTab(), // O conteúdo da aba 1
             AnnualAgendaTab(), // O conteúdo da aba 2
+            ScaleScreen(),     // <-- O CONTEÚDO DA ABA 3 (Sua tela de Escalas)
           ],
         ),
       ),

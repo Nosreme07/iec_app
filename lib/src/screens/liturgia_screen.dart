@@ -25,9 +25,28 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
   bool get _canEdit => _userRole == 'admin' || _userRole == 'financeiro';
 
   final List<String> _opcoesEventos = [
-    'Prelúdio', 'Poslúdio', 'Oração Inicial', 'Oração de Confissão', 'Momento de Intercessão', 'Oração Final',
-    'Leitura Bíblica', 'Leitura Bíblica Alternada', 'Louvor','Salmos e Hinos', 'Ofertório', 'Mensagem Bíblica', 'Santa Ceia', 'Outro'
+    'Prelúdio', 
+    'Poslúdio', 
+    'Oração Inicial', 
+    'Oração de Confissão e Perdão dos pecados', 
+    'Oração de Intercessão', 
+    'Família de Oração', 
+    'Oração Final',
+    'Leitura Bíblica', 
+    'Leitura Bíblica Alternada', 
+    'Louvor', 
+    'Salmos e Hinos', 
+    'Ofertório', 
+    'Mensagem Bíblica', 
+    'Santa Ceia', 
+    'Outro'
   ];
+  
+  get nome_ => null;
+  
+  get detalhes_ => null;
+  
+  get descricao_ => null;
 
   @override
   void initState() {
@@ -58,11 +77,11 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
     }
   }
 
-  // MODIFICAÇÃO: Usando um ID fixo para a liturgia nunca sumir, até que seja limpa.
+  // Usando um ID fixo para a liturgia nunca sumir, até que seja limpa.
   String _getDocId() => 'liturgia_atual'; 
   String _getDataFormatada() => DateFormat('dd/MM/yyyy').format(_dataFixa);
 
-  // --- NOVA FUNÇÃO: LIMPAR TUDO ---
+  // --- FUNÇÃO: LIMPAR TUDO ---
   void _limparLiturgia() {
     if (!_canEdit) return;
 
@@ -110,6 +129,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
 
     for (var item in _itensLocais) {
       final String titulo = (item['titulo'] ?? "Evento").toString();
+      final String nome = (item['nome'] ?? "").toString(); // Novo campo
       final String detalhes = (item['detalhes'] ?? "").toString();
       final String descricao = (item['descricao'] ?? "").toString();
       
@@ -121,14 +141,18 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
       else if (tituloLower.contains("leitura")) emoji = "📖";
       else if (tituloLower.contains("mensagem") || tituloLower.contains("palavra")) emoji = "📢";
       else if (tituloLower.contains("ceia")) emoji = "🍷";
+      else if (tituloLower.contains("família") || tituloLower.contains("familia")) emoji = "👨‍👩‍👧‍👦";
 
       msg.writeln("$emoji *$titulo*");
       
+      if (nome.isNotEmpty) {
+        msg.writeln("   👤 _$nome_");
+      }
       if (detalhes.isNotEmpty) {
-        msg.writeln("   _${detalhes}_");
+        msg.writeln("   📝 _$detalhes_");
       }
       if (descricao.isNotEmpty) {
-        msg.writeln("   _${descricao}_");
+        msg.writeln("   📌 _$descricao_");
       }
       msg.writeln(""); 
     }
@@ -153,6 +177,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
   String _getImagePath(String titulo) {
     final t = titulo.toLowerCase();
     if (t.contains('oração') || t.contains('intercessão')) return 'assets/images/oração.png';
+    else if (t.contains('família') || t.contains('familia')) return 'assets/images/familia.png'; // NOVO: Ícone de Família
     else if (t.contains('leitura')) return 'assets/images/leitura.png';
     else if (t.contains('louvor') || t.contains('ofertório') || t.contains('hinos')) return 'assets/images/louvor.png';
     else if (t.contains('mensagem')) return 'assets/images/mensagem.png';
@@ -170,8 +195,9 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
             List dadosBrutos = doc.data()!['itens'] ?? [];
             _itensLocais = dadosBrutos.map((e) => {
               'titulo': e['titulo'] ?? 'Evento',
+              'nome': e['nome'] ?? '', // Carrega o novo campo
               'detalhes': e['detalhes'] ?? '',
-              'descricao': e['descricao'] ?? '', // Carrega a nova descrição
+              'descricao': e['descricao'] ?? '', 
               'concluido': e['concluido'] ?? false, 
             }).toList();
             _isLoading = false;
@@ -185,6 +211,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
     }
   }
 
+  // Função manual para o botão principal
   Future<void> _salvarTudoNoFirebase() async {
     if (!_canEdit) return;
     showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
@@ -192,7 +219,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
       await FirebaseFirestore.instance.collection('liturgia').doc(_getDocId()).set({
         'direcao': _direcaoLocal,
         'itens': _itensLocais,
-        'data_referencia': Timestamp.fromDate(_dataFixa), // Registra o momento da última alteração
+        'data_referencia': Timestamp.fromDate(_dataFixa), 
       }, SetOptions(merge: true));
       if (mounted) {
         Navigator.pop(context); 
@@ -206,6 +233,39 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
     }
   }
 
+  // Função silenciosa para salvar automaticamente ao marcar os checks
+  Future<void> _salvarSilencioso() async {
+    if (!_canEdit) return;
+    try {
+      await FirebaseFirestore.instance.collection('liturgia').doc(_getDocId()).set({
+        'itens': _itensLocais,
+        'data_referencia': Timestamp.fromDate(DateTime.now()), 
+      }, SetOptions(merge: true));
+    } catch (e) {
+      print("Erro no auto-save da liturgia: $e");
+    }
+  }
+
+  // --- MARCAR COMO CONCLUÍDO E MOVER PARA O FINAL ---
+  void _toggleConcluido(int index) {
+    if (!_canEdit) return;
+    
+    setState(() {
+      final item = _itensLocais[index];
+      bool isConcluidoAtual = item['concluido'] ?? false;
+      item['concluido'] = !isConcluidoAtual;
+
+      // Se acabou de ser marcado como concluído, move para o final da lista
+      if (item['concluido'] == true) {
+        _itensLocais.removeAt(index);
+        _itensLocais.add(item);
+      }
+    });
+
+    // Dispara o salvamento no Firebase em background
+    _salvarSilencioso();
+  }
+
   void _showDirecaoDialog() {
     if (!_canEdit) return;
     final controller = TextEditingController(text: _direcaoLocal);
@@ -213,11 +273,15 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Quem vai dirigir?"),
-        content: TextField(controller: controller, decoration: const InputDecoration(labelText: "Nome", border: OutlineInputBorder())),
+        content: TextField(controller: controller, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: "Nome", border: OutlineInputBorder())),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
           ElevatedButton(
-            onPressed: () { setState(() => _direcaoLocal = controller.text); Navigator.pop(context); },
+            onPressed: () { 
+              setState(() => _direcaoLocal = controller.text); 
+              Navigator.pop(context);
+              _salvarSilencioso(); // Salva automaticamente ao mudar o dirigente
+            },
             child: const Text("Confirmar"),
           )
         ],
@@ -228,6 +292,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
   void _showItemDialog({Map<String, dynamic>? itemExistente, int? index}) {
     if (!_canEdit) return;
     String? tipoSelecionado = itemExistente?['titulo'] ?? _opcoesEventos.first;
+    final nomeController = TextEditingController(text: itemExistente?['nome'] ?? ''); // NOVO: Campo Nome
     final detalhesController = TextEditingController(text: itemExistente?['detalhes'] ?? '');
     final descricaoController = TextEditingController(text: itemExistente?['descricao'] ?? '');
 
@@ -241,7 +306,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
               children: [
                 Image.asset(imagePath, width: 28, height: 28, errorBuilder: (c, o, s) => const Icon(Icons.event)),
                 const SizedBox(width: 10),
-                Text(itemExistente == null ? "Novo Evento" : "Editar Evento"),
+                Expanded(child: Text(itemExistente == null ? "Novo Evento" : "Editar Evento", overflow: TextOverflow.ellipsis)),
               ],
             ),
             content: SingleChildScrollView(
@@ -256,11 +321,17 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
                     onChanged: (val) => setStateDialog(() => tipoSelecionado = val),
                   ),
                   const SizedBox(height: 15),
+                  // NOVO: Campo para registrar quem vai realizar o evento
+                  TextField(
+                    controller: nomeController, 
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: "Nome (Quem vai fazer?)", border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 15),
                   TextField(
                     controller: detalhesController, 
                     decoration: const InputDecoration(labelText: "Detalhes (Versículo, Hino...)", border: OutlineInputBorder()),
                   ),
-                  // MODIFICAÇÃO: Se for 'Outro', exibe também o campo de Descrição
                   if (tipoSelecionado == 'Outro') ...[
                     const SizedBox(height: 15),
                     TextField(
@@ -277,8 +348,9 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
                 onPressed: () {
                   final novoItem = {
                     'titulo': tipoSelecionado, 
-                    'detalhes': detalhesController.text,
-                    'descricao': tipoSelecionado == 'Outro' ? descricaoController.text : '',
+                    'nome': nomeController.text.trim(), // Salva o nome
+                    'detalhes': detalhesController.text.trim(),
+                    'descricao': tipoSelecionado == 'Outro' ? descricaoController.text.trim() : '',
                     'concluido': itemExistente?['concluido'] ?? false 
                   };
                   setState(() {
@@ -361,6 +433,7 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
                         setState(() {
                           _itensLocais.removeAt(index);
                         });
+                        _salvarSilencioso(); // Salva exclusão arrastando
                       },
                       child: _buildCardItem(item, isConcluido, imagePath, index),
                     )
@@ -392,40 +465,58 @@ class _LiturgiaScreenState extends State<LiturgiaScreen> {
       elevation: isConcluido ? 0 : 2,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: ListTile(
-        contentPadding: const EdgeInsets.only(left: 16, top: 4, bottom: 4, right: 8),
-        leading: Opacity(opacity: isConcluido ? 0.5 : 1.0, child: Image.asset(imagePath, width: 40, height: 40, errorBuilder: (c,o,s) => const Icon(Icons.broken_image))),
+        contentPadding: const EdgeInsets.only(left: 16, top: 4, bottom: 4, right: 0),
+        leading: Opacity(opacity: isConcluido ? 0.5 : 1.0, child: Image.asset(imagePath, width: 40, height: 40, errorBuilder: (c,o,s) => const Icon(Icons.event))),
         title: Text(item['titulo'], style: TextStyle(fontWeight: FontWeight.bold, decoration: isConcluido ? TextDecoration.lineThrough : null, color: isConcluido ? Colors.grey : Colors.black87)),
         
-        // MODIFICAÇÃO: Exibindo Detalhes e Descrição (se houver)
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // EXIBIÇÃO DO NOME
+            if (item['nome'] != null && item['nome'].toString().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 2),
+                child: Row(
+                  children: [
+                    Icon(Icons.person, size: 14, color: isConcluido ? Colors.grey : Colors.deepOrange[800]),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text(item['nome'], style: TextStyle(fontWeight: FontWeight.w600, color: isConcluido ? Colors.grey : Colors.deepOrange[800], decoration: isConcluido ? TextDecoration.lineThrough : null))),
+                  ],
+                ),
+              ),
+
+            // EXIBIÇÃO DOS DETALHES
             if (item['detalhes'] != null && item['detalhes'].toString().isNotEmpty)
               Text(item['detalhes'], style: TextStyle(decoration: isConcluido ? TextDecoration.lineThrough : null)),
+              
+            // EXIBIÇÃO DA DESCRIÇÃO EXTRA
             if (item['descricao'] != null && item['descricao'].toString().isNotEmpty)
               Text(item['descricao'], style: TextStyle(color: Colors.grey[700], decoration: isConcluido ? TextDecoration.lineThrough : null)),
           ],
         ),
 
-        // MODIFICAÇÃO: Roteamento para página de hinos ou marcar como concluído
         onTap: () {
+          // Se for hinário, navega. Senão, marca como concluído.
           if (item['titulo'] == 'Salmos e Hinos') {
             Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()));
           } else if (_canEdit) {
-            setState(() { item['concluido'] = !isConcluido; });
+            _toggleConcluido(index);
           }
         },
 
-        // MODIFICAÇÃO: Botões explícitos de Editar e Excluir lado a lado
         trailing: _canEdit 
           ? Row(
               mainAxisSize: MainAxisSize.min, 
               children: [
                 IconButton(icon: const Icon(Icons.edit, color: Colors.orange, size: 20), onPressed: () => _showItemDialog(itemExistente: item, index: index), tooltip: "Editar"), 
-                IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () => setState(() => _itensLocais.removeAt(index)), tooltip: "Excluir"),
-                Icon(isConcluido ? Icons.check_circle : Icons.circle_outlined, color: isConcluido ? Colors.green : Colors.grey, size: 28)
+                IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () { setState(() => _itensLocais.removeAt(index)); _salvarSilencioso(); }, tooltip: "Excluir"),
+                // Transformei o check em botão para facilitar o auto-save sem navegar sem querer
+                IconButton(
+                  icon: Icon(isConcluido ? Icons.check_circle : Icons.circle_outlined, color: isConcluido ? Colors.green : Colors.grey, size: 28),
+                  onPressed: () => _toggleConcluido(index),
+                ),
               ])
-          : (isConcluido ? const Icon(Icons.check_circle, color: Colors.green, size: 28) : null), 
+          : (isConcluido ? const Padding(padding: EdgeInsets.only(right: 16), child: Icon(Icons.check_circle, color: Colors.green, size: 28)) : null), 
       ),
     );
   }

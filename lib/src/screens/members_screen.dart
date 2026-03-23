@@ -451,11 +451,37 @@ class _MembersScreenState extends State<MembersScreen>
                     _buildRow(Icons.shield, "Oficial", get('oficial_igreja')),
                     _buildRow(
                         Icons.groups, "Departamento", get('departamento')),
+                    
+                    // --- ÁREA RESTRITA: ACESSO TOTAL ---
                     if (canManage) ...[
-                      _buildSectionTitle("Dados Privados"),
+                      _buildSectionTitle("Dados Privados & Contato"),
                       _buildRow(Icons.badge, "CPF", get('cpf')),
-                      _buildRow(Icons.location_on, "Endereço",
-                          "${get('endereco')}, ${get('numero')}"),
+                      _buildRow(Icons.email, "E-mail", get('email')),
+                      _buildRow(Icons.location_on, "Endereço", "${get('endereco')}, ${get('numero')} - ${get('bairro')}, ${get('cidade')}/${get('uf')}"),
+                      _buildRow(Icons.map, "CEP", get('cep')),
+                      
+                      _buildSectionTitle("Família & Pessoal"),
+                      _buildRow(Icons.person, "Pai", get('pai')),
+                      _buildRow(Icons.person_3, "Mãe", get('mae')),
+                      _buildRow(Icons.favorite, "Estado Civil", get('estado_civil')),
+                      _buildRow(Icons.volunteer_activism, "Cônjuge", get('conjuge')),
+                      _buildRow(Icons.child_care, "Filhos", get('filhos')),
+                      _buildRow(Icons.work, "Profissão", get('profissao')),
+                      _buildRow(Icons.school, "Escolaridade", get('escolaridade')),
+                      _buildRow(Icons.flag, "Naturalidade", get('naturalidade')),
+                      _buildRow(Icons.public, "Nacionalidade", get('nacionalidade')),
+                      
+                      _buildSectionTitle("Histórico Eclesiástico"),
+                      _buildRow(Icons.water_drop, "Batismo nas Águas", get('batismo_aguas')),
+                      _buildRow(Icons.church, "Membro Desde", get('membro_desde')),
+                      _buildRow(Icons.login, "Tipo de Admissão", get('tipo_admissao')),
+                      _buildRow(Icons.compare_arrows, "Igreja Anterior", get('igreja_anterior')),
+                      _buildRow(Icons.history, "Cargo Anterior", get('cargo_anterior')),
+                      _buildRow(Icons.calendar_month, "Data Conversão", get('data_conversao')),
+                      _buildRow(Icons.calendar_month, "Data Consagração", get('data_consagracao')),
+                      
+                      _buildSectionTitle("Observações"),
+                      _buildRow(Icons.notes, "Notas", get('observacoes')),
                     ]
                   ],
                 ),

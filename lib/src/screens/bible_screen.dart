@@ -707,7 +707,7 @@ class BibleStatsView extends StatelessWidget {
               pw.Spacer(),
               pw.Divider(),
               pw.Center(
-                  child: pw.Text("Gerado pelo aplicativo IEC App",
+                  child: pw.Text("Gerado pelo aplicativo IECM",
                       style: const pw.TextStyle(
                           fontSize: 10, color: PdfColors.grey))),
             ],

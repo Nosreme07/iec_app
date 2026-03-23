@@ -7,9 +7,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'profile_screen.dart';
 import 'bible_screen.dart';
 import 'hymnal_screen.dart';
+import 'ebd_screen.dart'; // NOVA PÁGINA: E.B.D
 import 'members_screen.dart';
 import 'unified_agenda_screen.dart'; 
-import 'scale_screen.dart';
 import 'patrimonio_screen.dart'; 
 import 'finance_screen.dart'; 
 import 'devocional_screen.dart';
@@ -111,7 +111,7 @@ class HomeContent extends StatelessWidget {
       stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
       builder: (context, snapshot) {
         
-        String role = 'membro'; // Padrão se não carregar
+        String role = 'membro'; 
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>;
           role = data['role'] ?? 'membro';
@@ -142,17 +142,17 @@ class HomeContent extends StatelessWidget {
                   mainAxisSpacing: 10,
                   childAspectRatio: 0.85,
                   children: [
-                    // ITENS PÚBLICOS (TODOS VEEM)
+                    // ITENS PÚBLICOS
                     _buildMenuCard(context, icon: Icons.menu_book, label: "Bíblia", color: Colors.brown, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const BibleScreen()))),
                     _buildMenuCard(context, icon: Icons.library_music, label: "Salmos & Hinos", color: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()))),
+                    
+                    // NOVA TELA E.B.D
+                    _buildMenuCard(context, icon: Icons.school, label: "E.B.D", color: const Color.fromARGB(255, 153, 0, 255)!, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const EbdScreen()))),
+                    
                     _buildMenuCard(context, icon: Icons.local_florist, label: "Devocional", color: Colors.pink, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DevocionalScreen()))),
                     _buildMenuCard(context, icon: Icons.calendar_month, label: "Agenda", color: Colors.blue, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UnifiedAgendaScreen()))),
                     
-                    // REGRAS DE VISUALIZAÇÃO AQUI
-                    
-                    // ESCALA: Visitante NÃO vê
-                    if (role != 'visitante')
-                      _buildMenuCard(context, icon: Icons.view_timeline, label: "Escala", color: Colors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ScaleScreen()))),
+                    // REGRAS DE VISUALIZAÇÃO
                     
                     // PATRIMÔNIO: Membro E Visitante NÃO veem (Só Admin e Financeiro)
                     if (role != 'membro' && role != 'visitante')
@@ -162,7 +162,7 @@ class HomeContent extends StatelessWidget {
                     if (role != 'visitante')
                       _buildMenuCard(context, icon: Icons.groups, label: "Membros", color: Colors.indigo, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MembersScreen()))),
                     
-                    // FINANÇAS (Dica: Geralmente visitantes também não devem ver isso, mas mantive conforme seu pedido original apenas para membros/visitantes verem)
+                    // FINANÇAS
                     _buildMenuCard(context, icon: Icons.attach_money, label: "Finanças", color: Colors.green[700]!, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()))),
                     
                     // LITURGIA (Público)
@@ -188,7 +188,6 @@ class HomeContent extends StatelessWidget {
     );
   }
 
-  // --- WIDGET DAS REDES SOCIAIS ---
   Widget _buildSocialMediaSection() {
     return Column(
       children: [
@@ -219,7 +218,7 @@ class HomeContent extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1), // Atualizado para withValues
+              color: color.withValues(alpha: 0.1),
               shape: BoxShape.circle,
               border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
             ),
@@ -245,7 +244,7 @@ class HomeContent extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), // Atualizado para withValues
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
               child: Icon(icon, size: 30, color: color),
             ),
             const SizedBox(height: 8),

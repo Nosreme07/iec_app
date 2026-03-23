@@ -83,10 +83,8 @@ class _ScaleScreenState extends State<ScaleScreen> {
     String monthLabel = DateFormat('MMMM yyyy', 'pt_BR').format(_currentDate).toUpperCase();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Escala de Cultos"),
-        backgroundColor: Colors.teal[800],
-      ),
+      // ATENÇÃO: AppBar removido de propósito para não duplicar cabeçalhos na Aba!
+      backgroundColor: Colors.grey[100],
       body: Column(
         children: [
           // --- SELETOR DE MÊS ---
