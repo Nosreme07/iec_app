@@ -18,7 +18,7 @@ plugins {
 android {
     // ALTERAÇÃO REALIZADA: Namespace atualizado para evitar a restrição "com.example"
     namespace = "br.org.iecm" 
-    compileSdk = 35 
+    compileSdk = 36 
     ndkVersion = flutter.ndkVersion
 
     // 2. Configuração da Assinatura de Lançamento (Release)
@@ -44,7 +44,7 @@ android {
         // ALTERAÇÃO REALIZADA: ApplicationId atualizado para ser único e profissional
         applicationId = "br.org.iecm" 
         minSdk = flutter.minSdkVersion 
-        targetSdk = 35 
+        targetSdk = 36 
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         
