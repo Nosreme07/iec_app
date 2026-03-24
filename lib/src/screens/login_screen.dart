@@ -26,9 +26,11 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _isObscureLogin = true;
   bool _isObscureReg = true;
+  
+  // Variável específica para o modal de cadastro
+  bool _isRegistering = false; 
 
   // --- 1. SUPORTE WHATSAPP ---
-  // Função atualizada para aceitar mensagens personalizadas
   Future<void> _falarComDesenvolvedor({String? mensagemPersonalizada}) async {
     const telefone = "5581995065696";
     final texto = mensagemPersonalizada ??
@@ -63,7 +65,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- 3. ESQUECI MINHA SENHA (FLUXO DIRETO PARA O SUPORTE) ---
+  // --- 3. ESQUECI MINHA SENHA ---
   void _esqueciSenhaSimplificado() {
     if (_cpfLoginController.text.isEmpty) {
       _showMsg("Por favor, digite seu CPF no campo acima primeiro.");
@@ -78,14 +80,19 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // --- 4. CADASTRO DE VISITANTE ---
-  Future<void> _cadastrarVisitante() async {
+  Future<void> _cadastrarVisitante(StateSetter setModalState) async {
+    if (_isRegistering) return;
+
     if (_nameRegController.text.isEmpty ||
         _cpfRegController.text.isEmpty ||
+        _phoneRegController.text.isEmpty ||
         _passwordRegController.text.length < 6) {
       _showMsg("Preencha tudo corretamente. Senha mín. 6 caracteres.");
       return;
     }
-    setState(() => _isLoading = true);
+    
+    setModalState(() => _isRegistering = true);
+    
     try {
       String emailInterno =
           AdminConfig.getEmailFromCpf(_cpfRegController.text.trim());
@@ -107,17 +114,25 @@ class _LoginScreenState extends State<LoginScreen> {
         'created_at': FieldValue.serverTimestamp(),
       });
 
-      if (mounted) Navigator.pop(context);
-      _showMsg("Cadastro realizado! Seja bem-vindo.", color: Colors.green);
+      if (mounted) {
+        Navigator.pop(context); 
+        _showMsg("Cadastro realizado! Seja bem-vindo.", color: Colors.green);
+      }
     } catch (e) {
       _showMsg("Erro: CPF já cadastrado ou dados inválidos.");
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setModalState(() => _isRegistering = false);
     }
   }
 
   // --- 5. MODAL DE CADASTRO ---
   void _mostrarModalCadastro() {
+    _isRegistering = false; 
+    _nameRegController.clear();
+    _cpfRegController.clear();
+    _phoneRegController.clear();
+    _passwordRegController.clear();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -140,6 +155,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
                 TextField(
                     controller: _nameRegController,
+                    textCapitalization: TextCapitalization.words,
                     decoration: const InputDecoration(
                         labelText: "Nome Completo",
                         border: OutlineInputBorder())),
@@ -153,11 +169,17 @@ class _LoginScreenState extends State<LoginScreen> {
                       border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 15),
+                // --- CAMPO DO WHATSAPP COM A MÁSCARA ---
                 TextField(
                     controller: _phoneRegController,
-                    keyboardType: TextInputType.phone,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      _TelefoneFormatter(), // Chama a máscara customizada
+                    ],
                     decoration: const InputDecoration(
                         labelText: "WhatsApp para contato",
+                        hintText: "(81) 99999-9999",
                         border: OutlineInputBorder())),
                 const SizedBox(height: 15),
                 TextField(
@@ -180,11 +202,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : _cadastrarVisitante,
+                    onPressed: _isRegistering ? null : () => _cadastrarVisitante(setModalState),
                     style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2E4C9D)),
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
+                        backgroundColor: const Color(0xFF2E4C9D),
+                        disabledBackgroundColor: Colors.grey[400]),
+                    child: _isRegistering
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
                         : const Text("CADASTRAR",
                             style: TextStyle(
                                 color: Colors.white,
@@ -290,9 +317,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _login,
                           style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2E4C9D)),
+                              backgroundColor: const Color(0xFF2E4C9D),
+                              disabledBackgroundColor: Colors.grey[400]),
                           child: _isLoading
-                              ? const CircularProgressIndicator()
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                               : const Text("ENTRAR",
                                   style: TextStyle(
                                       color: Colors.white,
@@ -340,6 +371,39 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ==========================================
+// MÁSCARA CUSTOMIZADA PARA WHATSAPP
+// ==========================================
+class _TelefoneFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    // Pegamos apenas os números limpos do que o usuário digitou
+    String numLimpo = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // Limita a 11 dígitos no total (DDD + 9 + 8 dígitos)
+    if (numLimpo.length > 11) {
+      numLimpo = numLimpo.substring(0, 11);
+    }
+
+    final buffer = StringBuffer();
+    for (int i = 0; i < numLimpo.length; i++) {
+      if (i == 0) buffer.write('(');
+      if (i == 2) buffer.write(') ');
+      if (i == 7) buffer.write('-');
+      buffer.write(numLimpo[i]);
+    }
+
+    final textoFormatado = buffer.toString();
+
+    // Retorna o texto formatado mantendo o cursor sempre no final
+    return TextEditingValue(
+      text: textoFormatado,
+      selection: TextSelection.collapsed(offset: textoFormatado.length),
     );
   }
 }
