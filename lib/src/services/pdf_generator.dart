@@ -62,7 +62,7 @@ class PdfGenerator {
   }
 
   // ===========================================================================
-  // 2. RELATÓRIO FINANCEIRO (CORRIGIDO E AJUSTADO)
+  // 2. RELATÓRIO FINANCEIRO (CORRIGIDO PARA DOWNLOAD NA WEB)
   // ===========================================================================
   static Future<void> generateFinanceReport(DateTime mesReferencia, List<QueryDocumentSnapshot> docs) async {
     final pdf = pw.Document();
@@ -178,17 +178,16 @@ class PdfGenerator {
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
               headerDecoration: const pw.BoxDecoration(color: PdfColors.blue900),
               
-              // --- AQUI ESTÁ O AJUSTE DA FONTE ---
-              cellStyle: const pw.TextStyle(fontSize: 8), // Fonte menor para caber
+              cellStyle: const pw.TextStyle(fontSize: 8), 
               cellHeight: 22,
               
               columnWidths: {
-                0: const pw.FixedColumnWidth(60),  // Aumentado de 50 para 60 para a Data caber
-                1: const pw.FlexColumnWidth(2),    // Nome
-                2: const pw.FlexColumnWidth(1.5),  // Categoria
-                3: const pw.FlexColumnWidth(2),    // Obs
-                4: const pw.FixedColumnWidth(40),  // Tipo
-                5: const pw.FixedColumnWidth(60),  // Valor
+                0: const pw.FixedColumnWidth(60),  
+                1: const pw.FlexColumnWidth(2),    
+                2: const pw.FlexColumnWidth(1.5),  
+                3: const pw.FlexColumnWidth(2),    
+                4: const pw.FixedColumnWidth(40),  
+                5: const pw.FixedColumnWidth(60),  
               },
               cellAlignments: {
                 0: pw.Alignment.center,
@@ -205,10 +204,13 @@ class PdfGenerator {
       ),
     );
 
+    // --- LINHAS CORRIGIDAS AQUI ---
     String nomeArquivo = 'Financeiro_${DateFormat('MM_yyyy').format(mesReferencia)}.pdf';
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: nomeArquivo
+    final bytes = await pdf.save();
+    
+    await Printing.sharePdf(
+      bytes: bytes, 
+      filename: nomeArquivo
     );
   }
 
@@ -257,11 +259,9 @@ class PdfGenerator {
     );
   }
 
-  // --- CORREÇÃO DO WITHOPACITY (FINANCE SUMMARY CARD) ---
   static pw.Widget _buildFinanceSummaryCard(String title, double value, PdfColor color) {
     final currencyFormat = NumberFormat.simpleCurrency(locale: 'pt_BR');
     
-    // Criando a cor de fundo manualmente (R, G, B, Opacidade)
     final backgroundColor = PdfColor(color.red, color.green, color.blue, 0.1);
 
     return pw.Container(
@@ -270,7 +270,7 @@ class PdfGenerator {
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: color, width: 1),
         borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-        color: backgroundColor, // Uso da cor corrigida
+        color: backgroundColor, 
       ),
       child: pw.Column(
         children: [

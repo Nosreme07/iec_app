@@ -6,14 +6,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image_cropper/image_cropper.dart'; // IMPORTANTE: PACOTE DE CORTE
+import 'package:image_cropper/image_cropper.dart'; 
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter/services.dart';
 
-// --- IMPORTAÇÕES PARA PDF ---
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'edit_profile.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -29,19 +29,18 @@ class ProfileScreen extends StatelessWidget {
     }
   }
 
-  // --- NOVA FUNÇÃO: CORTAR IMAGEM ---
+  // --- FUNÇÃO: CORTAR IMAGEM ---
   Future<File?> _cropImage(File imageFile) async {
     CroppedFile? croppedFile = await ImageCropper().cropImage(
       sourcePath: imageFile.path,
-      // Força a proporção 1:1 (Quadrado) para caber no círculo
       aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
       uiSettings: [
         AndroidUiSettings(
           toolbarTitle: 'Ajustar Foto',
-          toolbarColor: Colors.blue[900], // Cor do seu App
+          toolbarColor: Colors.blue[900], 
           toolbarWidgetColor: Colors.white,
           initAspectRatio: CropAspectRatioPreset.square,
-          lockAspectRatio: true, // Trava no quadrado
+          lockAspectRatio: true, 
           hideBottomControls: false,
         ),
         IOSUiSettings(
@@ -58,14 +57,14 @@ class ProfileScreen extends StatelessWidget {
     return null;
   }
 
-  // --- FUNÇÃO ALTERAR FOTO (ATUALIZADA COM CROP) ---
+  // --- FUNÇÃO ALTERAR FOTO ---
   Future<void> _pickAndUploadImage(BuildContext context, String uid) async {
     final ImagePicker picker = ImagePicker();
     
     try {
       final XFile? image = await picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 70, // Qualidade um pouco melhor para o corte
+        imageQuality: 70, 
       );
 
       if (image == null) return;
@@ -73,16 +72,11 @@ class ProfileScreen extends StatelessWidget {
       File? fileToUpload;
       Uint8List? webBytesToUpload;
 
-      // LÓGICA DE CORTE (APENAS PARA MOBILE)
       if (!kIsWeb) {
         File originalFile = File(image.path);
-        // Chama a função de corte
         fileToUpload = await _cropImage(originalFile);
-        
-        // Se o usuário cancelou o corte, paramos aqui
         if (fileToUpload == null) return; 
       } else {
-        // Na Web não usamos o cropper nativo
         webBytesToUpload = await image.readAsBytes();
       }
 
@@ -102,19 +96,17 @@ class ProfileScreen extends StatelessWidget {
           SettableMetadata(contentType: 'image/jpeg'),
         );
       } else {
-        // Upload do arquivo CORTADO
         await ref.putFile(fileToUpload!);
       }
 
       String downloadUrl = await ref.getDownloadURL();
 
-      // Atualiza Firestore
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'foto_url': downloadUrl,
       });
 
       if (context.mounted) {
-        Navigator.pop(context); // Fecha loading
+        Navigator.pop(context); 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Foto atualizada com sucesso!"), backgroundColor: Colors.green),
         );
@@ -337,7 +329,7 @@ class ProfileScreen extends StatelessWidget {
                         ]),
                         const Spacer(),
                         Row(children: [
-                            GestureDetector( // Permite clicar na foto do cartão também
+                            GestureDetector( 
                               onTap: () => _pickAndUploadImage(context, user.uid),
                               child: Container(
                                 decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), 
@@ -380,7 +372,25 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 
                 const SizedBox(height: 30),
-                _buildSettingsTile(icon: Icons.person_outline, title: "Meus Dados (Completo)", subtitle: "Visualize e altere sua foto", color: cardColor, onTap: () => _showMyDetails(context, data)),
+                // --- BOTÕES DE AÇÃO ---
+                _buildSettingsTile(icon: Icons.person_outline, title: "Visualizar Meus Dados", subtitle: "Confira sua ficha cadastral", color: cardColor, onTap: () => _showMyDetails(context, data)),
+                
+                // AQUI NÓS CHAMAMOS A NOVA TELA DE EDIÇÃO (IGUAL AO CADASTRO)
+_buildSettingsTile(
+  icon: Icons.edit, 
+  title: "Editar Meus Dados", 
+  subtitle: "Atualize suas informações pessoais", 
+  color: Colors.blue[600]!, 
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditProfileScreen(userData: data),
+      ),
+    );
+  }
+),
+                
                 _buildSettingsTile(icon: Icons.lock_outline, title: "Alterar Senha", subtitle: "Atualize sua segurança", color: Colors.orange, onTap: () => _showChangePasswordDialog(context)),
                 _buildSettingsTile(icon: Icons.logout, title: "Sair", subtitle: "Deslogar do aplicativo", color: Colors.red, onTap: () => _signOut(context)),
                 const SizedBox(height: 40),
@@ -399,7 +409,6 @@ class ProfileScreen extends StatelessWidget {
 
   void _showMyDetails(BuildContext context, Map<String, dynamic> data) {
     String get(String key) => (data[key] ?? "").toString();
-    String nomeDisplay = get('nome_completo').isNotEmpty ? get('nome_completo') : "Membro";
     String? fotoUrl = data['foto_url'];
     const Color headerColor = Color.fromARGB(255, 97, 108, 124);
 
@@ -515,7 +524,7 @@ class ProfileScreen extends StatelessWidget {
                   AuthCredential cred = EmailAuthProvider.credential(email: user!.email!, password: currentPasswordController.text);
                   await user.reauthenticateWithCredential(cred);
                   await user.updatePassword(newPasswordController.text);
-                  Navigator.pop(context);
+                  if(context.mounted) Navigator.pop(context);
                 } catch (e) {
                   debugPrint(e.toString());
                 }
@@ -525,6 +534,312 @@ class ProfileScreen extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+// ============================================================================
+// NOVA TELA DE EDIÇÃO (OCUPA A TELA INTEIRA IGUAL AO ADMIN_REGISTER_SCREEN)
+// ============================================================================
+class EditMyProfileScreen extends StatefulWidget {
+  final Map<String, dynamic> userData;
+
+  const EditMyProfileScreen({super.key, required this.userData});
+
+  @override
+  State<EditMyProfileScreen> createState() => _EditMyProfileScreenState();
+}
+
+class _EditMyProfileScreenState extends State<EditMyProfileScreen> {
+  bool _isSaving = false;
+
+  // --- CONTROLADORES BLOQUEADOS ---
+  late TextEditingController _cpfCtrl;
+  late TextEditingController _situacaoCtrl;
+  late TextEditingController _roleCtrl;
+
+  // --- CONTROLADORES EDITÁVEIS ---
+  late TextEditingController _nomeCtrl;
+  late TextEditingController _rgCtrl;
+  late TextEditingController _nascCtrl;
+  late TextEditingController _sangueCtrl;
+  late TextEditingController _sexoCtrl;
+  late TextEditingController _naturalidadeCtrl;
+  late TextEditingController _nacionalidadeCtrl;
+  late TextEditingController _estadoCivilCtrl;
+  late TextEditingController _conjugeCtrl;
+  late TextEditingController _filhosCtrl;
+  late TextEditingController _paiCtrl;
+  late TextEditingController _maeCtrl;
+  late TextEditingController _escolaridadeCtrl;
+  late TextEditingController _profissaoCtrl;
+  late TextEditingController _whatsCtrl;
+  late TextEditingController _emailCtrl;
+  late TextEditingController _endCtrl;
+  late TextEditingController _numCtrl;
+  late TextEditingController _bairroCtrl;
+  late TextEditingController _cidadeCtrl;
+  late TextEditingController _ufCtrl;
+  late TextEditingController _cepCtrl;
+  late TextEditingController _cargoCtrl;
+  late TextEditingController _oficialCtrl;
+  late TextEditingController _deptoCtrl;
+  late TextEditingController _membroDesdeCtrl;
+  late TextEditingController _batismoCtrl;
+  late TextEditingController _admissaoCtrl;
+  late TextEditingController _igrejaAntCtrl;
+  late TextEditingController _cargoAntCtrl;
+  late TextEditingController _conversaoCtrl;
+  late TextEditingController _consagracaoCtrl;
+  late TextEditingController _obsCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final data = widget.userData;
+
+    // Traduz o 'role'
+    String nivelAcesso = 'Membro';
+    if (data['role'] == 'admin') nivelAcesso = 'Administrador';
+    if (data['role'] == 'financeiro') nivelAcesso = 'Financeiro';
+
+    _cpfCtrl = TextEditingController(text: data['cpf']);
+    _situacaoCtrl = TextEditingController(text: data['situacao'] ?? 'Ativo');
+    _roleCtrl = TextEditingController(text: nivelAcesso);
+
+    _nomeCtrl = TextEditingController(text: data['nome_completo']);
+    _rgCtrl = TextEditingController(text: data['rg']);
+    _nascCtrl = TextEditingController(text: data['nascimento']);
+    _sangueCtrl = TextEditingController(text: data['grupo_sanguineo']);
+    _sexoCtrl = TextEditingController(text: data['sexo']);
+    _naturalidadeCtrl = TextEditingController(text: data['naturalidade']);
+    _nacionalidadeCtrl = TextEditingController(text: data['nacionalidade']);
+    _estadoCivilCtrl = TextEditingController(text: data['estado_civil']);
+    _conjugeCtrl = TextEditingController(text: data['conjuge']);
+    _filhosCtrl = TextEditingController(text: data['filhos']);
+    _paiCtrl = TextEditingController(text: data['pai']);
+    _maeCtrl = TextEditingController(text: data['mae']);
+    _escolaridadeCtrl = TextEditingController(text: data['escolaridade']);
+    _profissaoCtrl = TextEditingController(text: data['profissao']);
+    _whatsCtrl = TextEditingController(text: data['whatsapp']);
+    _emailCtrl = TextEditingController(text: data['email']);
+    _endCtrl = TextEditingController(text: data['endereco']);
+    _numCtrl = TextEditingController(text: data['numero']);
+    _bairroCtrl = TextEditingController(text: data['bairro']);
+    _cidadeCtrl = TextEditingController(text: data['cidade']);
+    _ufCtrl = TextEditingController(text: data['uf']);
+    _cepCtrl = TextEditingController(text: data['cep']);
+    _cargoCtrl = TextEditingController(text: data['cargo_atual']);
+    _oficialCtrl = TextEditingController(text: data['oficial_igreja']);
+    _deptoCtrl = TextEditingController(text: data['departamento']);
+    _membroDesdeCtrl = TextEditingController(text: data['membro_desde']);
+    _batismoCtrl = TextEditingController(text: data['batismo_aguas']);
+    _admissaoCtrl = TextEditingController(text: data['tipo_admissao']);
+    _igrejaAntCtrl = TextEditingController(text: data['igreja_anterior']);
+    _cargoAntCtrl = TextEditingController(text: data['cargo_anterior']);
+    _conversaoCtrl = TextEditingController(text: data['data_conversao']);
+    _consagracaoCtrl = TextEditingController(text: data['data_consagracao']);
+    _obsCtrl = TextEditingController(text: data['observacoes']);
+  }
+
+  @override
+  void dispose() {
+    _cpfCtrl.dispose(); _situacaoCtrl.dispose(); _roleCtrl.dispose(); _nomeCtrl.dispose();
+    _rgCtrl.dispose(); _nascCtrl.dispose(); _sangueCtrl.dispose(); _sexoCtrl.dispose();
+    _naturalidadeCtrl.dispose(); _nacionalidadeCtrl.dispose(); _estadoCivilCtrl.dispose();
+    _conjugeCtrl.dispose(); _filhosCtrl.dispose(); _paiCtrl.dispose(); _maeCtrl.dispose();
+    _escolaridadeCtrl.dispose(); _profissaoCtrl.dispose(); _whatsCtrl.dispose(); _emailCtrl.dispose();
+    _endCtrl.dispose(); _numCtrl.dispose(); _bairroCtrl.dispose(); _cidadeCtrl.dispose();
+    _ufCtrl.dispose(); _cepCtrl.dispose(); _cargoCtrl.dispose(); _oficialCtrl.dispose();
+    _deptoCtrl.dispose(); _membroDesdeCtrl.dispose(); _batismoCtrl.dispose(); _admissaoCtrl.dispose();
+    _igrejaAntCtrl.dispose(); _cargoAntCtrl.dispose(); _conversaoCtrl.dispose(); _consagracaoCtrl.dispose();
+    _obsCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _salvarDados() async {
+    setState(() => _isSaving = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      
+      // Salva apenas os campos permitidos
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'nome_completo': _nomeCtrl.text.trim(),
+        'rg': _rgCtrl.text.trim(),
+        'nascimento': _nascCtrl.text.trim(),
+        'grupo_sanguineo': _sangueCtrl.text.trim(),
+        'sexo': _sexoCtrl.text.trim(),
+        'naturalidade': _naturalidadeCtrl.text.trim(),
+        'nacionalidade': _nacionalidadeCtrl.text.trim(),
+        'estado_civil': _estadoCivilCtrl.text.trim(),
+        'conjuge': _conjugeCtrl.text.trim(),
+        'filhos': _filhosCtrl.text.trim(),
+        'pai': _paiCtrl.text.trim(),
+        'mae': _maeCtrl.text.trim(),
+        'escolaridade': _escolaridadeCtrl.text.trim(),
+        'profissao': _profissaoCtrl.text.trim(),
+        'whatsapp': _whatsCtrl.text.trim(),
+        'email': _emailCtrl.text.trim(),
+        'cep': _cepCtrl.text.trim(),
+        'endereco': _endCtrl.text.trim(),
+        'numero': _numCtrl.text.trim(),
+        'bairro': _bairroCtrl.text.trim(),
+        'cidade': _cidadeCtrl.text.trim(),
+        'uf': _ufCtrl.text.trim(),
+        'cargo_atual': _cargoCtrl.text.trim(),
+        'oficial_igreja': _oficialCtrl.text.trim(),
+        'departamento': _deptoCtrl.text.trim(),
+        'membro_desde': _membroDesdeCtrl.text.trim(),
+        'batismo_aguas': _batismoCtrl.text.trim(),
+        'tipo_admissao': _admissaoCtrl.text.trim(),
+        'igreja_anterior': _igrejaAntCtrl.text.trim(),
+        'cargo_anterior': _cargoAntCtrl.text.trim(),
+        'data_conversao': _conversaoCtrl.text.trim(),
+        'data_consagracao': _consagracaoCtrl.text.trim(),
+        'observacoes': _obsCtrl.text.trim(),
+      });
+      
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ficha atualizada com sucesso!"), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro ao atualizar."), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Widget _buildBlockedField(String label, TextEditingController controller) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        readOnly: true,
+        style: const TextStyle(color: Colors.black54),
+        decoration: InputDecoration(
+          labelText: label,
+          filled: true,
+          fillColor: Colors.grey[200],
+          prefixIcon: const Icon(Icons.lock, color: Colors.grey, size: 18),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildField(String label, TextEditingController controller, {int flex = 1, int maxLines = 1}) {
+    return Expanded(
+      flex: flex,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: TextField(
+          controller: controller,
+          maxLines: maxLines,
+          decoration: InputDecoration(
+            labelText: label,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 15, bottom: 10),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: Colors.grey[300])),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(title, style: TextStyle(color: Colors.indigo[900], fontWeight: FontWeight.bold)),
+          ),
+          Expanded(child: Divider(color: Colors.grey[300])),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Editar Meus Dados", style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.indigo,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            const Text("Atualize suas informações pessoais com atenção.", style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 10),
+            
+            _buildSectionHeader("Dados Restritos"),
+            _buildBlockedField("Nível de Acesso no App", _roleCtrl),
+            Row(
+              children: [
+                Expanded(child: _buildBlockedField("CPF (Login)", _cpfCtrl)),
+                const SizedBox(width: 10),
+                Expanded(child: _buildBlockedField("Situação Atual", _situacaoCtrl)),
+              ],
+            ),
+
+            _buildSectionHeader("Dados Pessoais"),
+            Row(children: [_buildField("Nome Completo", _nomeCtrl)]),
+            Row(children: [_buildField("RG", _rgCtrl), const SizedBox(width: 10), _buildField("Nascimento", _nascCtrl)]),
+            Row(children: [_buildField("Sexo", _sexoCtrl), const SizedBox(width: 10), _buildField("Tipo Sanguíneo", _sangueCtrl)]),
+            Row(children: [_buildField("Naturalidade", _naturalidadeCtrl), const SizedBox(width: 10), _buildField("Nacionalidade", _nacionalidadeCtrl)]),
+            Row(children: [_buildField("Estado Civil", _estadoCivilCtrl), const SizedBox(width: 10), _buildField("Filhos", _filhosCtrl)]),
+            Row(children: [_buildField("Nome do Cônjuge", _conjugeCtrl)]),
+
+            _buildSectionHeader("Filiação"),
+            Row(children: [_buildField("Nome do Pai", _paiCtrl)]),
+            Row(children: [_buildField("Nome da Mãe", _maeCtrl)]),
+
+            _buildSectionHeader("Profissional & Acadêmico"),
+            Row(children: [_buildField("Escolaridade", _escolaridadeCtrl)]),
+            Row(children: [_buildField("Profissão", _profissaoCtrl)]),
+
+            _buildSectionHeader("Contato e Endereço"),
+            Row(children: [_buildField("WhatsApp", _whatsCtrl), const SizedBox(width: 10), _buildField("E-mail", _emailCtrl)]),
+            Row(children: [_buildField("CEP", _cepCtrl)]),
+            Row(children: [_buildField("Endereço", _endCtrl, flex: 3), const SizedBox(width: 10), _buildField("Nº", _numCtrl, flex: 1)]),
+            Row(children: [_buildField("Bairro", _bairroCtrl, flex: 2), const SizedBox(width: 10), _buildField("Cidade", _cidadeCtrl, flex: 2), const SizedBox(width: 10), _buildField("UF", _ufCtrl, flex: 1)]),
+
+            _buildSectionHeader("Vida Eclesiástica"),
+            Row(children: [_buildField("Cargo Atual", _cargoCtrl), const SizedBox(width: 10), _buildField("Oficial da Igreja", _oficialCtrl)]),
+            Row(children: [_buildField("Departamento", _deptoCtrl)]),
+            Row(children: [_buildField("Membro Desde", _membroDesdeCtrl), const SizedBox(width: 10), _buildField("Batismo (Águas)", _batismoCtrl)]),
+            Row(children: [_buildField("Data Conversão", _conversaoCtrl), const SizedBox(width: 10), _buildField("Data Consagração", _consagracaoCtrl)]),
+            Row(children: [_buildField("Tipo de Admissão", _admissaoCtrl)]),
+            Row(children: [_buildField("Igreja Anterior", _igrejaAntCtrl)]),
+            Row(children: [_buildField("Cargo na Igreja Anterior", _cargoAntCtrl)]),
+
+            _buildSectionHeader("Observações"),
+            Row(children: [_buildField("Notas Adicionais", _obsCtrl, maxLines: 3)]),
+            const SizedBox(height: 20),
+
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo, 
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                ),
+                onPressed: _isSaving ? null : _salvarDados,
+                child: _isSaving 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text("SALVAR ALTERAÇÕES", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              ),
+            ),
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
     );
   }
 }

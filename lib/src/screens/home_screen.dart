@@ -150,7 +150,7 @@ class HomeContent extends StatelessWidget {
                     _buildMenuCard(context, icon: Icons.school, label: "E.B.D", color: const Color.fromARGB(255, 153, 0, 255)!, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const EbdScreen()))),
                     
                     _buildMenuCard(context, icon: Icons.local_florist, label: "Devocional", color: Colors.pink, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DevocionalScreen()))),
-                    _buildMenuCard(context, icon: Icons.calendar_month, label: "Agenda", color: Colors.blue, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UnifiedAgendaScreen()))),
+                    _buildMenuCard(context, icon: Icons.calendar_month, label: "Agenda & Escala", color: Colors.blue, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UnifiedAgendaScreen()))),
                     
                     // REGRAS DE VISUALIZAÇÃO
                     

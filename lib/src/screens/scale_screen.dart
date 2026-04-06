@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart'; // PACOTE DE COMPARTILHAMENTO
 import '../utils/admin_config.dart';
 
 class ScaleScreen extends StatefulWidget {
   const ScaleScreen({super.key});
 
   @override
-  State<ScaleScreen> createState() => _ScaleScreenState();
+  State<ScaleScreen> createState() => ScaleScreenState(); // Retiramos o underscore (_) para a classe ser pública
 }
 
-class _ScaleScreenState extends State<ScaleScreen> {
+class ScaleScreenState extends State<ScaleScreen> {
   DateTime _currentDate = DateTime.now();
   final bool _isAdmin = AdminConfig.isUserAdmin();
 
@@ -19,6 +20,75 @@ class _ScaleScreenState extends State<ScaleScreen> {
     setState(() {
       _currentDate = DateTime(_currentDate.year, _currentDate.month + monthsToAdd, 1);
     });
+  }
+
+// --- NOVA FUNÇÃO PÚBLICA: COMPARTILHAR ESCALA ---
+  Future<void> compartilharEscalaMes() async {
+    DateTime startOfMonth = DateTime(_currentDate.year, _currentDate.month, 1);
+    DateTime endOfMonth = DateTime(_currentDate.year, _currentDate.month + 1, 0, 23, 59, 59);
+    String monthLabel = DateFormat('MMMM yyyy', 'pt_BR').format(_currentDate).toUpperCase();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      var snapshot = await FirebaseFirestore.instance
+          .collection('agenda')
+          .where('data_hora', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+          .where('data_hora', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
+          .orderBy('data_hora')
+          .get();
+
+      StringBuffer sb = StringBuffer();
+      sb.writeln("📜 *ESCALA DE CULTOS - IECM* 📜");
+      sb.writeln("📅 *$monthLabel*\n");
+
+      if (snapshot.docs.isEmpty) {
+        sb.writeln("Nenhum culto agendado para este mês.");
+      } else {
+        for (var doc in snapshot.docs) {
+          var data = doc.data() as Map<String, dynamic>;
+          
+          DateTime dataHora = (data['data_hora'] as Timestamp).toDate();
+          String diaMes = DateFormat('dd/MM').format(dataHora);
+          String diaSemana = DateFormat('EEEE', 'pt_BR').format(dataHora).toUpperCase();
+          String hora = DateFormat('HH:mm').format(dataHora);
+          
+          String tipo = (data['tipo'] ?? "").toString().trim();
+          String titulo = (data['titulo'] ?? "").toString().trim();
+          String local = (data['local'] ?? "").toString().trim();
+          String dirigente = (data['dirigente'] ?? '').toString().trim();
+          String pregador = (data['pregador'] ?? '').toString().trim();
+
+          // Imprime o dia da semana
+          sb.writeln("*$diaSemana ($diaMes)*");
+          
+          // Monta a linha com Hora, Tipo e Local
+          String linhaHora = "⏰ $hora";
+          if (tipo.isNotEmpty) linhaHora += " - $tipo";
+          if (local.isNotEmpty) linhaHora += " ($local)";
+          sb.writeln(linhaHora);
+          
+          // Monta o restante
+          if (titulo.isNotEmpty) sb.writeln("✨ $titulo");
+          if (dirigente.isNotEmpty) sb.writeln("👤 Dirigente: $dirigente");
+          if (pregador.isNotEmpty) sb.writeln("🎤 Pregador: $pregador");
+          sb.writeln(); // Linha em branco separadora
+        }
+      }
+
+      if (mounted) Navigator.pop(context); // Fecha loading
+      await Share.share(sb.toString().trim());
+
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao gerar escala: $e"), backgroundColor: Colors.red));
+      }
+    }
   }
 
   // Função para Editar Escala (Dialog)
@@ -76,15 +146,26 @@ class _ScaleScreenState extends State<ScaleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Definir início e fim do mês para o filtro
     DateTime startOfMonth = DateTime(_currentDate.year, _currentDate.month, 1);
     DateTime endOfMonth = DateTime(_currentDate.year, _currentDate.month + 1, 0, 23, 59, 59);
     
     String monthLabel = DateFormat('MMMM yyyy', 'pt_BR').format(_currentDate).toUpperCase();
 
     return Scaffold(
-      // ATENÇÃO: AppBar removido de propósito para não duplicar cabeçalhos na Aba!
       backgroundColor: Colors.grey[100],
+      
+      // =======================================================
+      // BOTÃO ADICIONADO AQUI!
+      // =======================================================
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'btn_escala_screen', // Impede conflitos de animação
+        onPressed: compartilharEscalaMes,
+        icon: const Icon(Icons.share, color: Colors.white),
+        label: const Text("Compartilhar Escala", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.green[600],
+      ),
+      // =======================================================
+
       body: Column(
         children: [
           // --- SELETOR DE MÊS ---
@@ -131,7 +212,8 @@ class _ScaleScreenState extends State<ScaleScreen> {
                 }
 
                 return ListView.builder(
-                  padding: const EdgeInsets.all(12),
+                  // Margem extra no bottom para não ficar atrás do botão flutuante
+                  padding: const EdgeInsets.only(top: 12, left: 12, right: 12, bottom: 80),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
                     var data = docs[index].data() as Map<String, dynamic>;

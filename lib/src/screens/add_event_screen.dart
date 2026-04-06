@@ -37,6 +37,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
     'Culto de oração',
     'Culto de oração Online',
     'Culto de doutrina',
+    'Culto evangelístico',
     'Culto solene',
     'Culto Residencial',
     'EBD',
@@ -44,7 +45,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
     'Reunião',
     'Assembleia',
     'Evento Especial',
-    'Outro',          // Pode ser útil
+    'Outro',
+    'Livre',          // Pode ser útil
     'Louvorzão',
     'Congresso',      // Útil para agenda anual
     'Festividade',    // Útil para agenda anual

@@ -3,16 +3,114 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'add_event_screen.dart'; 
+import 'package:share_plus/share_plus.dart'; 
 
-class AgendaScreen extends StatefulWidget {
-  const AgendaScreen({super.key});
+// Certifique-se que estes arquivos existem no seu projeto com estes nomes
+import 'add_event_screen.dart'; 
+import '../services/pdf_generator.dart'; 
+import 'scale_screen.dart'; 
+
+// ==========================================
+// TELA PRINCIPAL (CONTROLLER DAS ABAS)
+// ==========================================
+class UnifiedAgendaScreen extends StatefulWidget {
+  const UnifiedAgendaScreen({super.key});
 
   @override
-  State<AgendaScreen> createState() => _AgendaScreenState();
+  State<UnifiedAgendaScreen> createState() => _UnifiedAgendaScreenState();
 }
 
-class _AgendaScreenState extends State<AgendaScreen> {
+class _UnifiedAgendaScreenState extends State<UnifiedAgendaScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  
+  // Chaves para acionar as funções das abas individualmente
+  final GlobalKey<_WeeklyAgendaTabState> _weeklyTabKey = GlobalKey<_WeeklyAgendaTabState>();
+  final GlobalKey<ScaleScreenState> _scaleTabKey = GlobalKey<ScaleScreenState>(); 
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    // Escuta as mudanças de aba para desenhar ou esconder o botão flutuante
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Agenda & Escalas", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.blue[900], 
+        iconTheme: const IconThemeData(color: Colors.white),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          indicatorColor: Colors.white,
+          tabs: const [
+            Tab(text: "SEMANAL", icon: Icon(Icons.calendar_view_week)),
+            Tab(text: "ANUAL", icon: Icon(Icons.calendar_month)),
+            Tab(text: "ESCALA", icon: Icon(Icons.view_timeline)), 
+          ],
+        ),
+      ),
+
+      // =========================================================
+      // BOTÃO FLUTUANTE DE COMPARTILHAMENTO (SÓ NA ABA 1 E 3)
+      // =========================================================
+      floatingActionButton: _tabController.index == 1 
+        ? null // Se for a aba Anual (índice 1), não mostra nada
+        : FloatingActionButton.extended(
+            // A tag diferente evita o bug do botão sumir ao trocar de aba
+            heroTag: _tabController.index == 0 ? 'btn_agenda' : 'btn_escala',
+            onPressed: () {
+              if (_tabController.index == 0) {
+                // Compartilha a Agenda Semanal
+                _weeklyTabKey.currentState?.compartilharAgenda();
+              } else if (_tabController.index == 2) {
+                // Compartilha a Escala Mensal
+                _scaleTabKey.currentState?.compartilharEscalaMes(); 
+              }
+            },
+            icon: const Icon(Icons.share, color: Colors.white),
+            label: Text(
+              _tabController.index == 0 ? "Compartilhar Agenda" : "Compartilhar Escala", 
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+            ),
+            backgroundColor: Colors.green[600], 
+          ),
+
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          WeeklyAgendaTab(key: _weeklyTabKey), 
+          const AnnualAgendaTab(), 
+          ScaleScreen(key: _scaleTabKey), // Chave conectada com o scale_screen.dart
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// ABA 1: LÓGICA DA AGENDA SEMANAL
+// ==========================================
+class WeeklyAgendaTab extends StatefulWidget {
+  const WeeklyAgendaTab({super.key});
+
+  @override
+  State<WeeklyAgendaTab> createState() => _WeeklyAgendaTabState();
+}
+
+class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
   DateTime _dataFocada = DateTime.now();
   DateTime _inicioDaSemana = DateTime.now();
 
@@ -52,10 +150,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
   Future<void> _carregarPrioridades() async {
     String semanaId = _getSemanaId();
-    if (mounted) {
-       setState(() {});
-    }
-
     try {
       var doc = await FirebaseFirestore.instance.collection('agenda_avisos').doc(semanaId).get();
       if (doc.exists && mounted) {
@@ -66,28 +160,26 @@ class _AgendaScreenState extends State<AgendaScreen> {
         if (mounted) setState(() => _prioridadesController.text = "");
       }
     } catch (e) {
-      print("Erro ao carregar prioridades: $e");
+      debugPrint("Erro ao carregar prioridades: $e");
     }
   }
 
   Future<void> _salvarPrioridades() async {
     setState(() => _isSavingPrioridades = true);
-    
     try {
       String semanaId = _getSemanaId();
-      
       await FirebaseFirestore.instance.collection('agenda_avisos').doc(semanaId).set({
         'texto': _prioridadesController.text,
         'ultima_atualizacao': FieldValue.serverTimestamp(),
-        'autor_uid': FirebaseAuth.instance.currentUser?.uid, 
+        'autor_uid': FirebaseAuth.instance.currentUser?.uid,
       }, SetOptions(merge: true));
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avisos salvos com sucesso!"), backgroundColor: Colors.green));
-        FocusScope.of(context).unfocus(); 
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avisos salvos!"), backgroundColor: Colors.green));
+        FocusScope.of(context).unfocus();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao salvar: $e"), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isSavingPrioridades = false);
     }
@@ -99,6 +191,111 @@ class _AgendaScreenState extends State<AgendaScreen> {
       _calcularInicioSemana();
     });
     _carregarPrioridades();
+  }
+
+  // --- FUNÇÃO PÚBLICA DE COMPARTILHAR AGENDA SEMANAL ---
+  Future<void> compartilharAgenda() async {
+    DateTime fimDaSemana = _inicioDaSemana.add(const Duration(days: 7));
+    String dataInicioFmt = DateFormat('dd/MM').format(_inicioDaSemana);
+    String dataFimFmt = DateFormat('dd/MM').format(fimDaSemana.subtract(const Duration(days: 1)));
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      var eventsSnapshot = await FirebaseFirestore.instance
+          .collection('agenda')
+          .where('data_hora', isGreaterThanOrEqualTo: Timestamp.fromDate(_inicioDaSemana))
+          .where('data_hora', isLessThan: Timestamp.fromDate(fimDaSemana))
+          .orderBy('data_hora')
+          .get();
+
+      var avisosSnapshot = await FirebaseFirestore.instance.collection('agenda_avisos').doc(_getSemanaId()).get();
+      String avisos = avisosSnapshot.exists ? (avisosSnapshot.data()?['texto'] ?? "") : "";
+
+      StringBuffer sb = StringBuffer();
+      sb.writeln("Agenda da semana - IECM");
+      sb.writeln("$dataInicioFmt à $dataFimFmt\n");
+
+      if (eventsSnapshot.docs.isEmpty) {
+        sb.writeln("Nenhum evento programado para esta semana.\n");
+      } else {
+        Map<int, List<Map<String, dynamic>>> eventosPorDia = {};
+        for (var doc in eventsSnapshot.docs) {
+          var data = doc.data() as Map<String, dynamic>;
+          Timestamp? ts = data['data_hora'] as Timestamp?;
+          if (ts != null) {
+            int diaOffset = ts.toDate().difference(_inicioDaSemana).inDays;
+            if (!eventosPorDia.containsKey(diaOffset)) eventosPorDia[diaOffset] = [];
+            eventosPorDia[diaOffset]!.add(data);
+          }
+        }
+
+        for (int i = 0; i < 7; i++) {
+          if (eventosPorDia.containsKey(i) && eventosPorDia[i]!.isNotEmpty) {
+            DateTime dayDate = _inicioDaSemana.add(Duration(days: i));
+            
+            String diaSemana = DateFormat('EEEE', 'pt_BR').format(dayDate).toUpperCase();
+            String diaMes = DateFormat('dd/MM').format(dayDate);
+            
+            // Imprime: DOMINGO (05/04)
+            sb.writeln("$diaSemana ($diaMes)");
+            
+            for (var evento in eventosPorDia[i]!) {
+              Timestamp? ts = evento['data_hora'] as Timestamp?;
+              String hora = ts != null ? DateFormat('HH:mm').format(ts.toDate()) : "--:--";
+              
+              String tipo = (evento['tipo'] ?? "").toString().trim();
+              String titulo = (evento['titulo'] ?? "").toString().trim();
+              String local = (evento['local'] ?? "").toString().trim();
+              String dirigente = (evento['dirigente'] ?? "").toString().trim();
+              String pregador = (evento['pregador'] ?? "").toString().trim();
+
+              // Linha 1: ⏰ 21:00 - Culto solene (Templo sede)
+              String linhaHora = "⏰ $hora - $tipo";
+              if (local.isNotEmpty) linhaHora += " ($local)";
+              sb.writeln(linhaHora);
+              
+              // Linha 2: ✨ Aniversário UAF (Sempre aparece)
+              if (titulo.isNotEmpty) {
+                 sb.writeln("✨ $titulo");
+              } else if (tipo.isNotEmpty) {
+                 sb.writeln("✨ $tipo");
+              }
+              
+              // Linha 3: 👤 Dirigente: Diaconisa Eliane Paiva
+              if (dirigente.isNotEmpty) {
+                sb.writeln("👤 Dirigente: $dirigente");
+              }
+              
+              // Linha 4: 🎤 Pregador: Pr. Marcos Fernandes
+              if (pregador.isNotEmpty) {
+                sb.writeln("🎤 Pregador: $pregador");
+              }
+              
+              sb.writeln(); // Espaço em branco ao fim do culto
+            }
+          }
+        }
+      }
+
+      if (avisos.isNotEmpty) {
+        sb.writeln("Avisos da semana\n");
+        sb.writeln(avisos);
+      }
+
+      if (mounted) Navigator.pop(context); // Tira o loading
+      await Share.share(sb.toString().trim());
+
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); 
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao gerar texto: $e"), backgroundColor: Colors.red));
+      }
+    }
   }
 
   void _addEvent(DateTime dateForThisBox) {
@@ -125,15 +322,11 @@ class _AgendaScreenState extends State<AgendaScreen> {
   void _showEventDetails(String id, Map<String, dynamic> data, bool canManage) {
     Timestamp? ts = data['data_hora'] as Timestamp?;
     String hora = ts != null ? DateFormat('HH:mm').format(ts.toDate()) : "--:--";
-    
-    String tipo = (data['tipo'] ?? "").toString();
-    String tituloCampo = (data['titulo'] ?? "").toString().trim();
-    String titulo = tituloCampo.isNotEmpty ? tituloCampo : (tipo.isNotEmpty ? tipo : "Evento");
-
-    String local = (data['local'] ?? "Igreja").toString();
-    String dirigente = (data['dirigente'] ?? "Não informado").toString();
-    String pregador = (data['pregador'] ?? "Não informado").toString();
-    String descricao = (data['descricao'] ?? "").toString();
+    String titulo = data['titulo'] ?? data['tipo'] ?? "Evento";
+    String local = data['local'] ?? "Igreja";
+    String dirigente = data['dirigente'] ?? "Não informado";
+    String pregador = data['pregador'] ?? "Não informado";
+    String descricao = data['descricao'] ?? "";
 
     showDialog(
       context: context,
@@ -158,7 +351,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 _buildDetailRow(Icons.person, "Dirigente:", dirigente),
                 const SizedBox(height: 8),
                 _buildDetailRow(Icons.mic, "Pregador:", pregador),
-                
                 if (descricao.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   const Text("Observações:", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -172,24 +364,15 @@ class _AgendaScreenState extends State<AgendaScreen> {
               TextButton.icon(
                 icon: const Icon(Icons.delete, color: Colors.red, size: 20),
                 label: const Text("Excluir", style: TextStyle(color: Colors.red)),
-                onPressed: () {
-                  Navigator.pop(ctx); 
-                  _deleteEvent(id);
-                },
+                onPressed: () { Navigator.pop(ctx); _deleteEvent(id); },
               ),
               TextButton.icon(
                 icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
                 label: const Text("Editar", style: TextStyle(color: Colors.blue)),
-                onPressed: () {
-                  Navigator.pop(ctx); 
-                  _editEvent(id, data); 
-                },
+                onPressed: () { Navigator.pop(ctx); _editEvent(id, data); },
               ),
             ],
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text("Fechar"),
-            ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Fechar")),
           ],
         );
       },
@@ -220,7 +403,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-
     if (user == null) return const Center(child: CircularProgressIndicator());
 
     return StreamBuilder<DocumentSnapshot>(
@@ -237,62 +419,74 @@ class _AgendaScreenState extends State<AgendaScreen> {
         DateTime fimDaSemana = _inicioDaSemana.add(const Duration(days: 7));
         String intervaloTexto = "${DateFormat('dd MMM').format(_inicioDaSemana)} - ${DateFormat('dd MMM').format(fimDaSemana.subtract(const Duration(days: 1)))}";
 
-        return Scaffold(
-          appBar: AppBar(
-            title: Column(
-              children: [
-                const Text("Agenda Semanal", style: TextStyle(color: Colors.white, fontSize: 16)),
-                Text(intervaloTexto, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              ],
+        return Column(
+          children: [
+            // --- BARRA DE CONTROLE DA SEMANA ---
+            Container(
+              color: Colors.indigo.withOpacity(0.1),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(icon: const Icon(Icons.arrow_back_ios, size: 18), onPressed: () => _trocarSemana(-1), tooltip: "Semana Anterior"),
+                  Column(
+                    children: [
+                      Text("Semana Atual", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo[900])),
+                      Text(intervaloTexto, style: TextStyle(color: Colors.indigo[700], fontSize: 12)),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      IconButton(icon: const Icon(Icons.calendar_today, size: 20), onPressed: () {
+                          setState(() {
+                            _dataFocada = DateTime.now();
+                            _calcularInicioSemana();
+                          });
+                          _carregarPrioridades();
+                        }, tooltip: "Hoje"),
+                      IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 18), onPressed: () => _trocarSemana(1), tooltip: "Próxima Semana"),
+                    ],
+                  )
+                ],
+              ),
             ),
-            backgroundColor: Colors.indigo,
-            iconTheme: const IconThemeData(color: Colors.white),
-            actions: [
-              IconButton(icon: const Icon(Icons.arrow_back_ios, size: 18), onPressed: () => _trocarSemana(-1), tooltip: "Semana Anterior"),
-              IconButton(icon: const Icon(Icons.calendar_today, size: 20), onPressed: () {
-                  setState(() {
-                    _dataFocada = DateTime.now();
-                    _calcularInicioSemana();
-                  });
-                  _carregarPrioridades();
-                }, tooltip: "Semana Atual"),
-              IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 18), onPressed: () => _trocarSemana(1), tooltip: "Próxima Semana"),
-            ],
-          ),
-          backgroundColor: Colors.grey[100],
-          
-          body: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('agenda')
-                .where('data_hora', isGreaterThanOrEqualTo: Timestamp.fromDate(_inicioDaSemana))
-                .where('data_hora', isLessThan: Timestamp.fromDate(fimDaSemana))
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) return Center(child: Text("Erro: ${snapshot.error}"));
-              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+            
+            // --- CONTEÚDO (GRID DE DIAS) ---
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('agenda')
+                    .where('data_hora', isGreaterThanOrEqualTo: Timestamp.fromDate(_inicioDaSemana))
+                    .where('data_hora', isLessThan: Timestamp.fromDate(fimDaSemana))
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) return Center(child: Text("Erro: ${snapshot.error}"));
+                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
 
-              final allDocs = snapshot.data!.docs;
+                  final allDocs = snapshot.data!.docs;
 
-              return GridView.builder(
-                padding: const EdgeInsets.all(10),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.55, 
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                ),
-                itemCount: 8, 
-                itemBuilder: (context, index) {
-                  if (index < 7) {
-                    DateTime dayDate = _inicioDaSemana.add(Duration(days: index));
-                    return _buildDayCard(dayDate, allDocs, canManage);
-                  } else {
-                    return _buildPriorityCard(canManage);
-                  }
+                  return GridView.builder(
+                    padding: const EdgeInsets.only(top: 10, left: 10, right: 10, bottom: 80), 
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2, 
+                      childAspectRatio: 0.55, 
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                    ),
+                    itemCount: 8, 
+                    itemBuilder: (context, index) {
+                      if (index < 7) {
+                        DateTime dayDate = _inicioDaSemana.add(Duration(days: index));
+                        return _buildDayCard(dayDate, allDocs, canManage);
+                      } else {
+                        return _buildPriorityCard(canManage);
+                      }
+                    },
+                  );
                 },
-              );
-            },
-          ),
+              ),
+            ),
+          ],
         );
       }
     );
@@ -339,16 +533,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   itemCount: dayEvents.length,
                   itemBuilder: (ctx, i) {
                     final data = dayEvents[i].data() as Map<String, dynamic>;
-                    
                     Timestamp? ts = data['data_hora'] as Timestamp?;
                     String hora = ts != null ? DateFormat('HH:mm').format(ts.toDate()) : "--:--";
-                    
-                    String tipo = (data['tipo'] ?? "Evento").toString().trim();
-                    String tituloCampo = (data['titulo'] ?? "").toString().trim();
-                    String local = (data['local'] ?? "").toString().trim();
-                    String dirigente = (data['dirigente'] ?? "").toString().trim();
-                    String pregador = (data['pregador'] ?? "").toString().trim();
-                    
+                    String evento = data['tipo'] ?? (data['titulo'] ?? "Evento");
+                    String local = data['local'] ?? "";
+                    String dirigente = data['dirigente'] ?? "";
+                    String pregador = data['pregador'] ?? "";
                     final colors = _eventColors[i % _eventColors.length];
 
                     return InkWell(
@@ -357,43 +547,15 @@ class _AgendaScreenState extends State<AgendaScreen> {
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 6),
                         padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: colors['bg'],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: colors['border']!, width: 1),
-                        ),
+                        decoration: BoxDecoration(color: colors['bg'], borderRadius: BorderRadius.circular(8), border: Border.all(color: colors['border']!, width: 1)),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // 1. HORA E TIPO DO EVENTO
-                            Text(
-                              "${hora}h - $tipo",
-                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.black87),
-                              maxLines: 1, overflow: TextOverflow.ellipsis,
-                            ),
+                            Text("$hora - ${evento.toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.black87), maxLines: 2, overflow: TextOverflow.ellipsis),
                             const SizedBox(height: 3),
-                            
-                            // 2. NOME DO EVENTO (Se houver)
-                            if (tituloCampo.isNotEmpty) ...[
-                              Text(
-                                tituloCampo,
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo[900]),
-                                maxLines: 2, overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 3),
-                            ],
-                            
-                            // 3. LOCAL
-                            if (local.isNotEmpty) 
-                              Row(children: [Icon(Icons.location_on, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text(local, style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
-                            
-                            // 4. DIRIGENTE
-                            if (dirigente.isNotEmpty) 
-                              Row(children: [Icon(Icons.person, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text("Dir. $dirigente", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
-                            
-                            // 5. PREGADOR
-                            if (pregador.isNotEmpty) 
-                              Row(children: [Icon(Icons.mic, size: 10, color: Colors.grey[700]), const SizedBox(width: 2), Expanded(child: Text("Preg. $pregador", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis))]),
+                            if (local.isNotEmpty) Text(local, style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            if (dirigente.isNotEmpty) Text("Dir: $dirigente", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            if (pregador.isNotEmpty) Text("Preg: $pregador", style: TextStyle(fontSize: 10, color: Colors.grey[800]), maxLines: 1, overflow: TextOverflow.ellipsis),
                           ],
                         ),
                       ),
@@ -434,22 +596,9 @@ class _AgendaScreenState extends State<AgendaScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Expanded(
-                  child: Text("Avisos", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown)),
-                ),
+                const Expanded(child: Text("Avisos", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown))),
                 if (canManage)
-                  SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: _isSavingPrioridades 
-                        ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.brown))
-                        : const Icon(Icons.save, size: 18, color: Colors.brown),
-                      onPressed: _salvarPrioridades,
-                      tooltip: "Salvar Aviso",
-                    ),
-                  )
+                  SizedBox(height: 24, width: 24, child: IconButton(padding: EdgeInsets.zero, icon: _isSavingPrioridades ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.brown)) : const Icon(Icons.save, size: 18, color: Colors.brown), onPressed: _salvarPrioridades, tooltip: "Salvar Aviso"))
               ],
             ),
           ),
@@ -458,33 +607,367 @@ class _AgendaScreenState extends State<AgendaScreen> {
             child: Padding(
               padding: const EdgeInsets.all(8.0),
               child: canManage 
-                ? TextField( 
-                    controller: _prioridadesController,
-                    maxLines: 20, 
-                    style: const TextStyle(fontSize: 12, color: Colors.black87),
-                    decoration: const InputDecoration(
-                      hintText: "Escreva os avisos da semana aqui...",
-                      border: InputBorder.none,
-                    ),
-                  )
+                ? TextField(controller: _prioridadesController, maxLines: 20, style: const TextStyle(fontSize: 12, color: Colors.black87), decoration: const InputDecoration(hintText: "Escreva os avisos da semana aqui...", border: InputBorder.none))
                 : StreamBuilder<DocumentSnapshot>( 
                     stream: FirebaseFirestore.instance.collection('agenda_avisos').doc(_getSemanaId()).snapshots(),
                     builder: (context, snapshot) {
-                      if (!snapshot.hasData || !snapshot.data!.exists) {
-                          return const Center(child: Text("Sem avisos.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 12)));
-                      }
+                      if (!snapshot.hasData || !snapshot.data!.exists) return const Center(child: Text("Sem avisos.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 12)));
                       String texto = snapshot.data!['texto'] ?? "";
                       if (texto.isEmpty) return const Center(child: Text("Sem avisos.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic, fontSize: 12)));
-                      
-                      return SingleChildScrollView(
-                        child: Text(texto, style: const TextStyle(fontSize: 12, color: Colors.black87)),
-                      );
+                      return SingleChildScrollView(child: Text(texto, style: const TextStyle(fontSize: 12, color: Colors.black87)));
                     },
                   ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// ==========================================
+// ABA 2: LÓGICA DA AGENDA ANUAL
+// ==========================================
+class AnnualAgendaTab extends StatefulWidget {
+  const AnnualAgendaTab({super.key});
+
+  @override
+  State<AnnualAgendaTab> createState() => _AnnualAgendaTabState();
+}
+
+class _AnnualAgendaTabState extends State<AnnualAgendaTab> {
+  int _anoSelecionado = DateTime.now().year;
+
+  @override
+  void initState() {
+    super.initState();
+    initializeDateFormatting('pt_BR', null);
+  }
+
+  void _trocarAno(int delta) {
+    setState(() => _anoSelecionado += delta);
+  }
+
+  void _addAnnualEvent() {
+    Navigator.push(
+      context, 
+      MaterialPageRoute(builder: (context) => const AddEventScreen(isAnnual: true))
+    );
+  }
+
+  Future<void> _printCalendar() async {
+    DateTime inicioAno = DateTime(_anoSelecionado, 1, 1);
+    DateTime fimAno = DateTime(_anoSelecionado, 12, 31, 23, 59, 59);
+
+    showDialog(
+      context: context, 
+      barrierDismissible: false,
+      builder: (c) => const Center(child: CircularProgressIndicator())
+    );
+
+    try {
+      var snapshot = await FirebaseFirestore.instance
+          .collection('agenda')
+          .where('data_hora', isGreaterThanOrEqualTo: Timestamp.fromDate(inicioAno))
+          .where('data_hora', isLessThanOrEqualTo: Timestamp.fromDate(fimAno))
+          .where('is_annual', isEqualTo: true)
+          .get();
+
+      if (mounted) Navigator.pop(context);
+
+      await PdfGenerator.generateAndPrint(_anoSelecionado, snapshot.docs);
+      
+    } catch (e) {
+      if (mounted) Navigator.pop(context); 
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao gerar PDF: $e")));
+    }
+  }
+
+  void _editAnnualEvent(String id, Map<String, dynamic> data) {
+    Navigator.pop(context);
+    Navigator.push(
+      context, 
+      MaterialPageRoute(
+        builder: (context) => AddEventScreen(
+          eventId: id, 
+          eventData: data, 
+          isAnnual: true
+        )
+      )
+    );
+  }
+
+  Future<void> _deleteEvent(String id) async {
+    Navigator.pop(context); 
+    
+    bool confirm = await showDialog(
+      context: context, 
+      builder: (ctx) => AlertDialog(
+        title: const Text("Excluir Evento"), 
+        content: const Text("Tem certeza que deseja apagar este evento anual?"), 
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")), 
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("EXCLUIR", style: TextStyle(color: Colors.red)))
+        ]
+      )
+    ) ?? false;
+
+    if (confirm) {
+      await FirebaseFirestore.instance.collection('agenda').doc(id).delete();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return const Center(child: CircularProgressIndicator());
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, userSnapshot) {
+        
+        bool canManage = false;
+        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+           final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+           String role = userData['role'] ?? 'membro';
+           canManage = role == 'admin' || role == 'financeiro';
+        }
+
+        DateTime inicioAno = DateTime(_anoSelecionado, 1, 1);
+        DateTime fimAno = DateTime(_anoSelecionado, 12, 31, 23, 59, 59);
+
+        return Scaffold(
+          backgroundColor: Colors.transparent, 
+          floatingActionButton: canManage 
+            ? FloatingActionButton.extended(
+                onPressed: _addAnnualEvent,
+                backgroundColor: Colors.purple,
+                icon: const Icon(Icons.add, color: Colors.white),
+                label: const Text("Novo Evento", style: TextStyle(color: Colors.white)),
+              )
+            : null,
+          body: Column(
+            children: [
+               Container(
+                color: Colors.purple.withOpacity(0.1),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        IconButton(icon: const Icon(Icons.arrow_back_ios, size: 16), onPressed: () => _trocarAno(-1)),
+                        Text("$_anoSelecionado", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.purple[800])),
+                        IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 16), onPressed: () => _trocarAno(1)),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.print, size: 24, color: Colors.purple),
+                      tooltip: "Exportar PDF",
+                      onPressed: _printCalendar,
+                    ),
+                  ],
+                ),
+              ),
+
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('agenda')
+                      .where('data_hora', isGreaterThanOrEqualTo: Timestamp.fromDate(inicioAno))
+                      .where('data_hora', isLessThanOrEqualTo: Timestamp.fromDate(fimAno))
+                      .where('is_annual', isEqualTo: true) 
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) return const Center(child: Text("Erro ao carregar agenda"));
+                    if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+
+                    List<DocumentSnapshot> eventosAnuais = snapshot.data!.docs;
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(10),
+                      itemCount: 12,
+                      itemBuilder: (context, index) {
+                        int mes = index + 1;
+                        return _buildMonthGrid(mes, eventosAnuais, canManage);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  Widget _buildMonthGrid(int month, List<DocumentSnapshot> eventosDoAno, bool canManage) {
+    DateTime dataBase = DateTime(_anoSelecionado, month, 1);
+    String nomeMes = DateFormat('MMMM', 'pt_BR').format(dataBase);
+    
+    List<DocumentSnapshot> eventosMes = eventosDoAno.where((doc) {
+      DateTime data = (doc['data_hora'] as Timestamp).toDate();
+      return data.month == month;
+    }).toList();
+
+    int diasNoMes = DateUtils.getDaysInMonth(_anoSelecionado, month);
+    int primeiroDiaSemana = dataBase.weekday; 
+    int offset = primeiroDiaSemana - 1; 
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 20),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: const BoxDecoration(
+              color: Color.fromARGB(255, 212, 120, 228),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            child: Text(
+              nomeMes.toUpperCase(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18),
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.all(10.0),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+                      .map((d) => Text(d, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey[700])))
+                      .toList(),
+                ),
+                const Divider(),
+                
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: diasNoMes + offset,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 7,
+                    childAspectRatio: 1.0,
+                  ),
+                  itemBuilder: (context, index) {
+                    if (index < offset) return const SizedBox(); 
+                    
+                    int dia = index - offset + 1;
+                    
+                    var eventosDia = eventosMes.where((doc) {
+                      DateTime d = (doc['data_hora'] as Timestamp).toDate();
+                      return d.day == dia;
+                    }).toList();
+
+                    bool temEvento = eventosDia.isNotEmpty;
+
+                    return InkWell(
+                      onTap: temEvento ? () => _showEventDetails(dia, month, eventosDia, canManage) : null,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        margin: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: temEvento ? const Color.fromARGB(255, 212, 120, 228) : Colors.transparent, 
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          "$dia",
+                          style: TextStyle(
+                            fontWeight: temEvento ? FontWeight.bold : FontWeight.normal,
+                            color: temEvento ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEventDetails(int dia, int mes, List<DocumentSnapshot> eventos, bool canManage) {
+    String dataFormatada = "$dia/${mes.toString().padLeft(2, '0')}/$_anoSelecionado";
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Column(
+            children: [
+              const Icon(Icons.event, color: Colors.purple, size: 40),
+              const SizedBox(height: 8),
+              Text("Eventos de $dataFormatada", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: eventos.length,
+              separatorBuilder: (c, i) => const Divider(),
+              itemBuilder: (ctx, i) {
+                var doc = eventos[i];
+                var data = doc.data() as Map<String, dynamic>;
+                String hora = DateFormat('HH:mm').format((data['data_hora'] as Timestamp).toDate());
+                String titulo = data['titulo'] ?? data['tipo'];
+                String local = data['local'] ?? "Local não informado";
+
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.purple[50], shape: BoxShape.circle),
+                    child: const Icon(Icons.star, color: Colors.purple, size: 20),
+                  ),
+                  title: Text(titulo, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("$hora - $local", style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                      if (data['dirigente'] != null && data['dirigente'].toString().isNotEmpty)
+                        Text("Dir: ${data['dirigente']}", style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                    ],
+                  ),
+                  trailing: canManage 
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () => _editAnnualEvent(doc.id, data),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => _deleteEvent(doc.id),
+                          ),
+                        ],
+                      )
+                    : null,
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context), 
+              child: const Text("Fechar", style: TextStyle(color: Colors.purple))
+            )
+          ],
+        );
+      },
     );
   }
 }
