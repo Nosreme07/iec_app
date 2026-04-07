@@ -283,7 +283,7 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
       }
 
       if (avisos.isNotEmpty) {
-        sb.writeln("👨‍👩‍👧‍👦 Família de Oração da Semana\n");
+        sb.writeln("👨‍👩‍👧‍👦 Família de Oração\n");
         sb.writeln(avisos);
       }
 
@@ -596,7 +596,7 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Expanded(child: Text("Família de Oração da Semana", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown))),
+                const Expanded(child: Text("Família de Oração", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown))),
                 if (canManage)
                   SizedBox(height: 24, width: 24, child: IconButton(padding: EdgeInsets.zero, icon: _isSavingPrioridades ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.brown)) : const Icon(Icons.save, size: 18, color: Colors.brown), onPressed: _salvarPrioridades, tooltip: "Salvar Aviso"))
               ],

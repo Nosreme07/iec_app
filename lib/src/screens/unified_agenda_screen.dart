@@ -3,8 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:share_plus/share_plus.dart'; 
 
+// Certifique-se que estes arquivos existem no seu projeto com estes nomes
 import 'add_event_screen.dart'; 
 import '../services/pdf_generator.dart'; 
 import 'scale_screen.dart'; 
@@ -19,16 +20,18 @@ class UnifiedAgendaScreen extends StatefulWidget {
   State<UnifiedAgendaScreen> createState() => _UnifiedAgendaScreenState();
 }
 
-// Transformei em StatefulWidget para poder controlar qual aba está ativa
 class _UnifiedAgendaScreenState extends State<UnifiedAgendaScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  
+  // Chaves para acionar as funções das abas individualmente
   final GlobalKey<_WeeklyAgendaTabState> _weeklyTabKey = GlobalKey<_WeeklyAgendaTabState>();
+  final GlobalKey<ScaleScreenState> _scaleTabKey = GlobalKey<ScaleScreenState>(); 
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    // Adiciona listener para reconstruir a tela quando mudar de aba (para mostrar/esconder o botão)
+    // Escuta as mudanças de aba para desenhar ou esconder o botão flutuante
     _tabController.addListener(() {
       if (mounted) setState(() {});
     });
@@ -59,28 +62,38 @@ class _UnifiedAgendaScreenState extends State<UnifiedAgendaScreen> with SingleTi
           ],
         ),
       ),
-      
+
       // =========================================================
-      // BOTÃO FLUTUANTE DE COMPARTILHAMENTO (SÓ APARECE NA ABA 0)
+      // BOTÃO FLUTUANTE DE COMPARTILHAMENTO (SÓ NA ABA 1 E 3)
       // =========================================================
-      floatingActionButton: _tabController.index == 0
-        ? FloatingActionButton.extended(
+      floatingActionButton: _tabController.index == 1 
+        ? null // Se for a aba Anual (índice 1), não mostra nada
+        : FloatingActionButton.extended(
+            // A tag diferente evita o bug do botão sumir ao trocar de aba
+            heroTag: _tabController.index == 0 ? 'btn_agenda' : 'btn_escala',
             onPressed: () {
-              // Chama a função que está dentro da aba Semanal
-              _weeklyTabKey.currentState?.compartilharAgenda();
+              if (_tabController.index == 0) {
+                // Compartilha a Agenda Semanal
+                _weeklyTabKey.currentState?.compartilharAgenda();
+              } else if (_tabController.index == 2) {
+                // Compartilha a Escala Mensal
+                _scaleTabKey.currentState?.compartilharEscalaMes(); 
+              }
             },
             icon: const Icon(Icons.share, color: Colors.white),
-            label: const Text("Compartilhar", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            backgroundColor: Colors.green[600], // Cor do WhatsApp
-          )
-        : null,
+            label: Text(
+              _tabController.index == 0 ? "Compartilhar Agenda" : "Compartilhar Escala", 
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+            ),
+            backgroundColor: Colors.green[600], 
+          ),
 
       body: TabBarView(
         controller: _tabController,
         children: [
-          WeeklyAgendaTab(key: _weeklyTabKey), // Passando a Key para podermos chamar a função de fora
+          WeeklyAgendaTab(key: _weeklyTabKey), 
           const AnnualAgendaTab(), 
-          const ScaleScreen(),     
+          ScaleScreen(key: _scaleTabKey), // Chave conectada com o scale_screen.dart
         ],
       ),
     );
@@ -147,7 +160,7 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
         if (mounted) setState(() => _prioridadesController.text = "");
       }
     } catch (e) {
-      print("Erro ao carregar prioridades: $e");
+      debugPrint("Erro ao carregar prioridades: $e");
     }
   }
 
@@ -180,10 +193,11 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
     _carregarPrioridades();
   }
 
-  // --- NOVA FUNÇÃO PÚBLICA PARA O BOTÃO PODER CHAMAR ---
+  // --- FUNÇÃO PÚBLICA DE COMPARTILHAR AGENDA SEMANAL ---
   Future<void> compartilharAgenda() async {
     DateTime fimDaSemana = _inicioDaSemana.add(const Duration(days: 7));
-    String intervaloTexto = "${DateFormat('dd/MM').format(_inicioDaSemana)} a ${DateFormat('dd/MM').format(fimDaSemana.subtract(const Duration(days: 1)))}";
+    String dataInicioFmt = DateFormat('dd/MM').format(_inicioDaSemana);
+    String dataFimFmt = DateFormat('dd/MM').format(fimDaSemana.subtract(const Duration(days: 1)));
 
     showDialog(
       context: context,
@@ -204,7 +218,7 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
 
       StringBuffer sb = StringBuffer();
       sb.writeln("🗓️ *AGENDA DA SEMANA - IECM* 🗓️");
-      sb.writeln("📅 $intervaloTexto\n");
+      sb.writeln("📅 $dataInicioFmt à $dataFimFmt\n");
 
       if (eventsSnapshot.docs.isEmpty) {
         sb.writeln("Nenhum evento programado para esta semana.\n");
@@ -223,6 +237,7 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
         for (int i = 0; i < 7; i++) {
           if (eventosPorDia.containsKey(i) && eventosPorDia[i]!.isNotEmpty) {
             DateTime dayDate = _inicioDaSemana.add(Duration(days: i));
+            
             String diaSemana = DateFormat('EEEE', 'pt_BR').format(dayDate).toUpperCase();
             String diaMes = DateFormat('dd/MM').format(dayDate);
             
@@ -231,18 +246,27 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
             for (var evento in eventosPorDia[i]!) {
               Timestamp? ts = evento['data_hora'] as Timestamp?;
               String hora = ts != null ? DateFormat('HH:mm').format(ts.toDate()) : "--:--";
+              
               String tipo = (evento['tipo'] ?? "Evento").toString().trim();
               String titulo = (evento['titulo'] ?? "").toString().trim();
+              String local = (evento['local'] ?? "").toString().trim();
               String pregador = (evento['pregador'] ?? "").toString().trim();
               String dirigente = (evento['dirigente'] ?? "").toString().trim();
               
-              sb.write("⏰ $hora - $tipo");
-              if (titulo.isNotEmpty) sb.write(" ($titulo)");
-              sb.writeln();
+              // Linha 1: ⏰ Hora - Tipo (Local)
+              String linhaHora = "⏰ $hora - $tipo";
+              if (local.isNotEmpty) linhaHora += " ($local)";
+              sb.writeln(linhaHora);
               
+              // Linha 2: ✨ Nome do evento (Se houver)
+              if (titulo.isNotEmpty) {
+                sb.writeln("✨ $titulo");
+              }
+              
+              // Linhas 3 e 4: Dirigente e Pregador
               if (dirigente.isNotEmpty) sb.writeln("👤 Dirigente: $dirigente");
               if (pregador.isNotEmpty) sb.writeln("🎤 Pregador: $pregador");
-              sb.writeln(); 
+              sb.writeln(); // Espaço em branco ao fim do culto
             }
           }
         }
@@ -253,8 +277,7 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
         sb.writeln(avisos);
       }
 
-      if (mounted) Navigator.pop(context);
-
+      if (mounted) Navigator.pop(context); // Tira o loading
       await Share.share(sb.toString().trim());
 
     } catch (e) {
@@ -433,7 +456,7 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
                   final allDocs = snapshot.data!.docs;
 
                   return GridView.builder(
-                    padding: const EdgeInsets.only(top: 10, left: 10, right: 10, bottom: 80), // Espaço pro botão
+                    padding: const EdgeInsets.only(top: 10, left: 10, right: 10, bottom: 80), 
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2, 
                       childAspectRatio: 0.55, 
@@ -550,9 +573,9 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.yellow[50], 
-        borderRadius: BorderRadius.circular(12), 
-        border: Border.all(color: Colors.orange.shade300, width: 2), 
-        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))]
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade300, width: 2),
+        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))],
       ),
       child: Column(
         children: [
@@ -563,7 +586,7 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Expanded(child: Text("Avisos", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown))),
+                const Expanded(child: Text("Família de Oração", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown))),
                 if (canManage)
                   SizedBox(height: 24, width: 24, child: IconButton(padding: EdgeInsets.zero, icon: _isSavingPrioridades ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.brown)) : const Icon(Icons.save, size: 18, color: Colors.brown), onPressed: _salvarPrioridades, tooltip: "Salvar Aviso"))
               ],
@@ -642,7 +665,6 @@ class _AnnualAgendaTabState extends State<AnnualAgendaTab> {
 
       if (mounted) Navigator.pop(context);
 
-      // Usando o gerador de PDF existente para a Web (Printing.sharePdf)
       await PdfGenerator.generateAndPrint(_anoSelecionado, snapshot.docs);
       
     } catch (e) {
@@ -717,7 +739,6 @@ class _AnnualAgendaTabState extends State<AnnualAgendaTab> {
             : null,
           body: Column(
             children: [
-              // --- BARRA DE CONTROLE DO ANO ---
                Container(
                 color: Colors.purple.withOpacity(0.1),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -740,7 +761,6 @@ class _AnnualAgendaTabState extends State<AnnualAgendaTab> {
                 ),
               ),
 
-              // --- CONTEÚDO LISTA DE MESES ---
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
@@ -777,7 +797,6 @@ class _AnnualAgendaTabState extends State<AnnualAgendaTab> {
     DateTime dataBase = DateTime(_anoSelecionado, month, 1);
     String nomeMes = DateFormat('MMMM', 'pt_BR').format(dataBase);
     
-    // Filtra eventos deste mês específico
     List<DocumentSnapshot> eventosMes = eventosDoAno.where((doc) {
       DateTime data = (doc['data_hora'] as Timestamp).toDate();
       return data.month == month;
@@ -793,7 +812,6 @@ class _AnnualAgendaTabState extends State<AnnualAgendaTab> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Column(
         children: [
-          // Título do Mês
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10),

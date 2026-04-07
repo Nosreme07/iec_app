@@ -84,7 +84,7 @@ class MuralAvisosWidget extends StatelessWidget {
               Icon(Icons.family_restroom_sharp, color: Colors.amber[900], size: 20),
               const SizedBox(width: 8),
               Text(
-                "Família de Oração da Semana",
+                "FAMÍLIA DE ORAÇÃO",
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
