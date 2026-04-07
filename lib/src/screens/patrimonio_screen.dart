@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:intl/intl.dart';
 
 class PatrimonioScreen extends StatefulWidget {
   const PatrimonioScreen({super.key});
@@ -14,8 +18,14 @@ class _PatrimonioScreenState extends State<PatrimonioScreen> {
   // Controladores
   final TextEditingController _nomeController = TextEditingController();
   final TextEditingController _quantidadeController = TextEditingController();
+  final TextEditingController _valorUnitarioController = TextEditingController();
   final TextEditingController _observacoesController = TextEditingController();
   final TextEditingController _qrCodeController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+
+  // Variáveis corrigidas da barra de Pesquisa
+  bool _isSearching = false;
+  String _searchQuery = "";
   
   // Variável para o Dropdown (Situação)
   String _situacaoSelecionada = 'Em uso';
@@ -24,17 +34,126 @@ class _PatrimonioScreenState extends State<PatrimonioScreen> {
   bool _isSaving = false;
   bool _isGeneratingCode = false;
 
+  // Formatador de Moeda
+  final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+
   @override
   void dispose() {
     _nomeController.dispose();
     _quantidadeController.dispose();
+    _valorUnitarioController.dispose();
     _observacoesController.dispose();
     _qrCodeController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  // --- LÓGICA DE NEGÓCIO ---
+  // --- LÓGICA DE GERAR PDF ---
+  Future<void> _exportarPDF(List<QueryDocumentSnapshot> itens) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
 
+    try {
+      final pdf = pw.Document();
+      final anoAtual = DateTime.now().year;
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape, 
+          margin: const pw.EdgeInsets.all(30),
+          build: (pw.Context context) {
+            return [
+              // CABEÇALHO DO PDF
+              pw.Center(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    pw.Text("Inventário", style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+                    pw.SizedBox(height: 4),
+                    pw.Text("Igreja Evangélica Congregacional em Moreno", style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+                    pw.Text("CNPJ: 30.057.670.0001-05", style: const pw.TextStyle(fontSize: 12)),
+                    pw.Text("Ano: $anoAtual", style: const pw.TextStyle(fontSize: 12)),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 20),
+              
+              // TABELA DE ITENS
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey400),
+                defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle, // ALINHA TODA A TABELA NO MEIO
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(3), // Nome
+                  1: const pw.FlexColumnWidth(1), // Qtd
+                  2: const pw.FlexColumnWidth(2), // Valor Un.
+                  3: const pw.FlexColumnWidth(2), // Total
+                  4: const pw.FlexColumnWidth(3), // Obs
+                  5: const pw.FixedColumnWidth(65), // QR
+                },
+                children: [
+                  // Linha dos Títulos
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                    children: [
+                      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text("Nome do item", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10), textAlign: pw.TextAlign.center))),
+                      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text("Qtd", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10), textAlign: pw.TextAlign.center))),
+                      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text("Val. Unitário", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10), textAlign: pw.TextAlign.center))),
+                      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text("Val. Total", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10), textAlign: pw.TextAlign.center))),
+                      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text("Observações", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10), textAlign: pw.TextAlign.center))),
+                      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text("QR CODE", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10), textAlign: pw.TextAlign.center))),
+                    ],
+                  ),
+                  // Linhas de Dados
+                  ...itens.map((doc) {
+                    var data = doc.data() as Map<String, dynamic>;
+                    String nome = data['nome'] ?? "";
+                    double qtd = (data['quantidade'] ?? 0).toDouble();
+                    double vUnit = (data['valor_unitario'] ?? 0).toDouble();
+                    String obs = data['observacoes'] ?? "";
+                    String qrData = data['qr_code_data'] ?? "";
+
+                    return pw.TableRow(
+                      children: [
+                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text(nome, style: const pw.TextStyle(fontSize: 10), textAlign: pw.TextAlign.center))),
+                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text(qtd.toInt().toString(), style: const pw.TextStyle(fontSize: 10), textAlign: pw.TextAlign.center))),
+                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text(_currencyFormat.format(vUnit), style: const pw.TextStyle(fontSize: 10), textAlign: pw.TextAlign.center))),
+                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text(_currencyFormat.format(vUnit * qtd), style: const pw.TextStyle(fontSize: 10), textAlign: pw.TextAlign.center))),
+                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text(obs, style: const pw.TextStyle(fontSize: 10), textAlign: pw.TextAlign.center))),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4), 
+                          child: qrData.isNotEmpty 
+                              ? pw.Center(child: pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: qrData, width: 45, height: 45))
+                              : pw.Center(child: pw.Text("Sem QR", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey), textAlign: pw.TextAlign.center))
+                        ),
+                      ]
+                    );
+                  })
+                ]
+              ),
+            ];
+          }
+        )
+      );
+
+      if (mounted) Navigator.pop(context); 
+
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+        name: 'Inventario_IECM_$anoAtual.pdf',
+      );
+
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao gerar PDF: $e"), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  // --- LÓGICA DE NEGÓCIO ---
   Future<void> _gerarCodigoAutomatico() async {
     if (_nomeController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha o Nome do item primeiro.")));
@@ -82,10 +201,12 @@ Código: $codigoSequencial""";
 
     try {
       double qtd = double.tryParse(_quantidadeController.text.replaceAll(',', '.')) ?? 0;
+      double vUnit = double.tryParse(_valorUnitarioController.text.replaceAll(',', '.')) ?? 0;
 
       Map<String, dynamic> dados = {
         'nome': _nomeController.text.trim(),
         'quantidade': qtd,
+        'valor_unitario': vUnit, 
         'observacoes': _observacoesController.text.trim(),
         'situacao': _situacaoSelecionada,
         'qr_code_data': _qrCodeController.text.trim(),
@@ -100,7 +221,7 @@ Código: $codigoSequencial""";
       }
 
       if (mounted) {
-        Navigator.pop(context); // Fecha o Dialog
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(docId == null ? "Item registrado!" : "Item atualizado!"),
           backgroundColor: Colors.green,
@@ -128,7 +249,7 @@ Código: $codigoSequencial""";
 
     if (confirm) {
       await FirebaseFirestore.instance.collection('tombamento').doc(docId).delete();
-      if (mounted) Navigator.pop(context); // Fecha o popup de detalhes
+      if (mounted) Navigator.pop(context); 
     }
   }
 
@@ -136,6 +257,7 @@ Código: $codigoSequencial""";
   void _showDetailsDialog(String docId, Map<String, dynamic> data, bool canManage) {
     String nome = data['nome'] ?? "Sem Nome";
     double qtd = (data['quantidade'] ?? 0).toDouble();
+    double vUnit = (data['valor_unitario'] ?? 0).toDouble();
     String obs = data['observacoes'] ?? "Sem observações";
     String situacao = data['situacao'] ?? "Em uso";
     String qrData = data['qr_code_data'] ?? "";
@@ -155,7 +277,7 @@ Código: $codigoSequencial""";
               const SizedBox(height: 5),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(color: corSituacao.withOpacity(0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: corSituacao)),
+                decoration: BoxDecoration(color: corSituacao.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: corSituacao)),
                 child: Text(situacao.toUpperCase(), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: corSituacao)),
               ),
             ],
@@ -167,6 +289,12 @@ Código: $codigoSequencial""";
               children: [
                 const Divider(),
                 _buildDetailRow("Quantidade:", "${qtd.toInt()}"),
+                const SizedBox(height: 4),
+                _buildDetailRow("Valor Unitário:", _currencyFormat.format(vUnit)),
+                if (qtd > 1) ...[
+                  const SizedBox(height: 4),
+                  _buildDetailRow("Valor Total:", _currencyFormat.format(vUnit * qtd)),
+                ],
                 const SizedBox(height: 8),
                 const Text("Observações:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 Text(obs, style: TextStyle(color: Colors.grey[800], fontSize: 14)),
@@ -217,7 +345,7 @@ Código: $codigoSequencial""";
       children: [
         Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(width: 8),
-        Text(value),
+        Expanded(child: Text(value, overflow: TextOverflow.ellipsis)),
       ],
     );
   }
@@ -227,12 +355,14 @@ Código: $codigoSequencial""";
     if (data != null) {
       _nomeController.text = data['nome'] ?? '';
       _quantidadeController.text = (data['quantidade'] ?? 0).toString();
+      _valorUnitarioController.text = (data['valor_unitario'] ?? 0).toString(); 
       _observacoesController.text = data['observacoes'] ?? '';
       _qrCodeController.text = data['qr_code_data'] ?? '';
       _situacaoSelecionada = data['situacao'] ?? 'Em uso';
     } else {
       _nomeController.clear();
-      _quantidadeController.clear();
+      _quantidadeController.text = "1";
+      _valorUnitarioController.clear();
       _observacoesController.clear();
       _qrCodeController.clear();
       _situacaoSelecionada = 'Em uso';
@@ -263,7 +393,7 @@ Código: $codigoSequencial""";
                         Expanded(
                           flex: 2,
                           child: DropdownButtonFormField<String>(
-                            value: _situacaoSelecionada,
+                            initialValue: _situacaoSelecionada,
                             decoration: const InputDecoration(labelText: "Situação", border: OutlineInputBorder()),
                             items: _opcoesSituacao.map((String situacao) {
                               return DropdownMenuItem<String>(
@@ -281,6 +411,15 @@ Código: $codigoSequencial""";
                       ],
                     ),
                     const SizedBox(height: 12),
+
+                    // CAMPO DE VALOR UNITÁRIO
+                    TextField(
+                      controller: _valorUnitarioController, 
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true), 
+                      decoration: const InputDecoration(labelText: "Valor Venal Unitário (R\$)", hintText: "Ex: 150.50", prefixText: "R\$ ", border: OutlineInputBorder())
+                    ),
+                    const SizedBox(height: 12),
+
                     TextField(controller: _observacoesController, maxLines: 3, decoration: const InputDecoration(labelText: "Observações", hintText: "Estado, local, etc...", border: OutlineInputBorder())),
                     
                     const SizedBox(height: 20),
@@ -338,24 +477,66 @@ Código: $codigoSequencial""";
 
     if (user == null) return const Center(child: CircularProgressIndicator());
 
-        return StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
-          builder: (context, userSnapshot) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, userSnapshot) {
         
-          bool canManage = false;
-          if (userSnapshot.hasData && userSnapshot.data!.exists) {
+        bool canManage = false;
+        if (userSnapshot.hasData && userSnapshot.data!.exists) {
            final userData = userSnapshot.data!.data() as Map<String, dynamic>;
            String role = userData['role'] ?? 'membro';
            
-           // --- ATUALIZADO: Incluindo 'administrativo' na permissão visual ---
-             canManage = role == 'admin' || role == 'financeiro' || role == 'administrativo';
-          }
+           canManage = role == 'admin' || role == 'financeiro' || role == 'administrativo';
+        }
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text("Controle de Patrimônio", style: TextStyle(color: Colors.white, fontSize: 18)),
+            title: _isSearching
+                ? TextField(
+                    autofocus: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: 'Pesquisar patrimônio...',
+                      hintStyle: TextStyle(color: Colors.white70),
+                      border: InputBorder.none,
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value.toLowerCase();
+                      });
+                    },
+                  )
+                : const Text("Controle de Patrimônio", style: TextStyle(color: Colors.white, fontSize: 18)),
             backgroundColor: Colors.indigo,
             iconTheme: const IconThemeData(color: Colors.white),
+            actions: [
+              IconButton(
+                icon: Icon(_isSearching ? Icons.close : Icons.search),
+                onPressed: () {
+                  setState(() {
+                    _isSearching = !_isSearching;
+                    if (!_isSearching) _searchQuery = ""; 
+                  });
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.picture_as_pdf),
+                tooltip: "Exportar para PDF",
+                onPressed: () async {
+                  var snapshot = await FirebaseFirestore.instance.collection('tombamento').orderBy('nome').get();
+                  
+                  // Se houver pesquisa ativa, filtra os itens antes de gerar o PDF
+                  var docsParaExportar = _searchQuery.isEmpty 
+                    ? snapshot.docs 
+                    : snapshot.docs.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return (data['nome'] ?? '').toString().toLowerCase().contains(_searchQuery);
+                      }).toList();
+                      
+                  _exportarPDF(docsParaExportar);
+                },
+              ),
+            ],
           ),
           backgroundColor: Colors.grey[100],
           
@@ -365,7 +546,13 @@ Código: $codigoSequencial""";
               if (snapshot.hasError) return const Center(child: Text("Erro ao carregar dados."));
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
 
-              final docs = snapshot.data!.docs;
+              final allDocs = snapshot.data!.docs;
+
+              final docs = allDocs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final nome = (data['nome'] ?? '').toString().toLowerCase();
+                return nome.contains(_searchQuery);
+              }).toList();
 
               if (docs.isEmpty) {
                 return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.inventory_2_outlined, size: 60, color: Colors.grey[400]), const SizedBox(height: 10), Text("Nenhum item registrado.", style: TextStyle(color: Colors.grey[600]))]));
@@ -380,6 +567,7 @@ Código: $codigoSequencial""";
                   
                   String nome = data['nome'] ?? "Sem Nome";
                   double qtd = (data['quantidade'] ?? 0).toDouble();
+                  double vUnit = (data['valor_unitario'] ?? 0).toDouble();
                   String observacoes = data['observacoes'] ?? "";
                   String situacao = data['situacao'] ?? "Em uso";
                   String qrFullText = data['qr_code_data'] ?? "";
@@ -387,6 +575,8 @@ Código: $codigoSequencial""";
                   Color statusColor = Colors.green;
                   if (situacao == 'Descartado') statusColor = Colors.red;
                   if (situacao == 'Vendido') statusColor = Colors.blue;
+
+                  String textoValores = "Unitário: ${_currencyFormat.format(vUnit)}${qtd > 1 ? '  |  Total: ${_currencyFormat.format(vUnit * qtd)}' : ''}";
 
                   return Card(
                     elevation: 2,
@@ -410,8 +600,15 @@ Código: $codigoSequencial""";
                               Text("|  Qtd: ${qtd.toInt()}", style: const TextStyle(fontSize: 12)),
                             ],
                           ),
-                          if (observacoes.isNotEmpty)
+                          const SizedBox(height: 4),
+                          Text(
+                            textoValores,
+                            style: TextStyle(color: Colors.grey[800], fontSize: 12, fontWeight: FontWeight.w600)
+                          ),
+                          if (observacoes.isNotEmpty) ...[
+                            const SizedBox(height: 2),
                             Text(observacoes, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                          ]
                         ],
                       ),
                       onTap: () => _showDetailsDialog(id, data, canManage),

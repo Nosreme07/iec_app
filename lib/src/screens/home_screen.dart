@@ -10,7 +10,8 @@ import 'hymnal_screen.dart';
 import 'ebd_screen.dart'; // NOVA PÁGINA: E.B.D
 import 'members_screen.dart';
 import 'unified_agenda_screen.dart'; 
-import 'patrimonio_screen.dart'; 
+// Demos um apelido aqui para evitar o erro de ambiguidade (ambiguous_import)
+import 'patrimonio_screen.dart' as patrimonio_tela; 
 import 'finance_screen.dart'; 
 import 'devocional_screen.dart';
 import 'notices_history_screen.dart'; 
@@ -49,7 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("IEC-MORENO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.blue[900],
+        backgroundColor: Colors.blue.shade900,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           StreamBuilder<DocumentSnapshot>(
@@ -84,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.person), label: "Perfil"),
         ],
         currentIndex: _selectedIndex,
-        selectedItemColor: Colors.blue[900],
+        selectedItemColor: Colors.blue.shade900,
         onTap: _onItemTapped,
       ),
     );
@@ -147,7 +148,7 @@ class HomeContent extends StatelessWidget {
                     _buildMenuCard(context, icon: Icons.library_music, label: "Salmos & Hinos", color: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const HymnalScreen()))),
                     
                     // NOVA TELA E.B.D
-                    _buildMenuCard(context, icon: Icons.school, label: "E.B.D", color: const Color.fromARGB(255, 153, 0, 255)!, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const EbdScreen()))),
+                    _buildMenuCard(context, icon: Icons.school, label: "E.B.D", color: const Color.fromARGB(255, 153, 0, 255), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const EbdScreen()))),
                     
                     _buildMenuCard(context, icon: Icons.local_florist, label: "Devocional", color: Colors.pink, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DevocionalScreen()))),
                     _buildMenuCard(context, icon: Icons.calendar_month, label: "Agenda & Escala", color: Colors.blue, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UnifiedAgendaScreen()))),
@@ -156,14 +157,14 @@ class HomeContent extends StatelessWidget {
                     
                     // PATRIMÔNIO: Membro E Visitante NÃO veem (Só Admin e Financeiro)
                     if (role != 'membro' && role != 'visitante')
-                      _buildMenuCard(context, icon: Icons.inventory_2, label: "Patrimônio", color: Colors.blueGrey, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PatrimonioScreen()))),
+                      _buildMenuCard(context, icon: Icons.inventory_2, label: "Patrimônio", color: Colors.blueGrey, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const patrimonio_tela.PatrimonioScreen()))),
                     
                     // MEMBROS: Visitante NÃO vê
                     if (role != 'visitante')
                       _buildMenuCard(context, icon: Icons.groups, label: "Membros", color: Colors.indigo, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MembersScreen()))),
                     
                     // FINANÇAS
-                    _buildMenuCard(context, icon: Icons.attach_money, label: "Finanças", color: Colors.green[700]!, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()))),
+                    _buildMenuCard(context, icon: Icons.attach_money, label: "Finanças", color: Colors.green.shade700, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen()))),
                     
                     // LITURGIA (Público)
                     _buildMenuCard(context, icon: Icons.format_list_bulleted, label: "Liturgia", color: Colors.deepOrange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const LiturgiaScreen()))),
@@ -202,7 +203,7 @@ class HomeContent extends StatelessWidget {
             const SizedBox(width: 20),
             _socialButton(icon: Icons.play_circle_fill, color: Colors.red, label: "YouTube", onTap: () => _launchSocialMedia("https://www.youtube.com/@IecMoreno")),
             const SizedBox(width: 20),
-            _socialButton(icon: Icons.facebook, color: Colors.blue[800]!, label: "Facebook", onTap: () => _launchSocialMedia("https://www.facebook.com/iecmorenope")),
+            _socialButton(icon: Icons.facebook, color: Colors.blue.shade800, label: "Facebook", onTap: () => _launchSocialMedia("https://www.facebook.com/iecmorenope")),
           ],
         ),
       ],

@@ -81,10 +81,10 @@ class MuralAvisosWidget extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.push_pin, color: Colors.amber[900], size: 20),
+              Icon(Icons.family_restroom_sharp, color: Colors.amber[900], size: 20),
               const SizedBox(width: 8),
               Text(
-                "Avisos & Lembretes",
+                "Família de Oração da Semana",
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,

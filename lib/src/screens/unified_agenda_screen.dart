@@ -249,7 +249,7 @@ class _WeeklyAgendaTabState extends State<WeeklyAgendaTab> {
       }
 
       if (avisos.isNotEmpty) {
-        sb.writeln("📌 *AVISOS DA SEMANA:*");
+        sb.writeln("👨‍👩‍👧‍👦 *FAMÍLIA DE ORAÇÃO:*");
         sb.writeln(avisos);
       }
 

@@ -85,6 +85,9 @@ class _WeeklyNoticesWidgetState extends State<WeeklyNoticesWidget> {
                 DateTime dataEvento = (doc['data_hora'] as Timestamp).toDate();
                 return dataEvento.day == diaAtual.day && dataEvento.month == diaAtual.month;
               }).toList();
+              
+              // Ordena os eventos do dia pelo horário
+              eventosDoDia.sort((a, b) => a['data_hora'].compareTo(b['data_hora']));
 
               var aniversariantesDoDia = snapshotMembros.data!.docs.where((doc) {
                 var data = doc.data() as Map<String, dynamic>;
@@ -112,7 +115,7 @@ class _WeeklyNoticesWidgetState extends State<WeeklyNoticesWidget> {
             }
 
             return Container(
-              height: 180, // Aumentei um pouco a altura para caber Pregador e Dirigente
+              height: 250, // Aumentei a altura para caber todas as informações do culto confortavelmente
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -162,7 +165,7 @@ class _WeeklyNoticesWidgetState extends State<WeeklyNoticesWidget> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                "${diaSemana.toUpperCase()} - $data",
+                "${diaSemana.toUpperCase()} ($data)",
                 style: TextStyle(fontWeight: FontWeight.bold, color: titleColor, fontSize: 16),
               ),
               if (temAniversario) 
@@ -205,41 +208,48 @@ class _WeeklyNoticesWidgetState extends State<WeeklyNoticesWidget> {
                         );
                       }),
 
-                    if (temAniversario && temEvento) const SizedBox(height: 8),
+                    if (temAniversario && temEvento) const SizedBox(height: 12),
 
-                    // --- EVENTOS (CULTOS) COM PREGADOR E DIRIGENTE ---
+                    // --- EVENTOS (CULTOS) COM O FORMATO DESEJADO ---
                     if (temEvento)
                       ...eventos.map((doc) {
                         var data = doc.data() as Map<String, dynamic>;
                         String hora = DateFormat('HH:mm').format((data['data_hora'] as Timestamp).toDate());
-                        String titulo = data['titulo'] ?? data['tipo'];
                         
-                        // Captura os campos opcionais
-                        String? dirigente = data['dirigente'];
-                        String? pregador = data['pregador'];
+                        String tipo = (data['tipo'] ?? "").toString().trim();
+                        String titulo = (data['titulo'] ?? "").toString().trim();
+                        String local = (data['local'] ?? "").toString().trim();
+                        String dirigente = (data['dirigente'] ?? "").toString().trim();
+                        String pregador = (data['pregador'] ?? "").toString().trim();
+
+                        // Monta a Linha 1: ⏰ Hora - Tipo (Local)
+                        String linhaHora = "⏰ $hora";
+                        if (tipo.isNotEmpty) linhaHora += " - $tipo";
+                        if (local.isNotEmpty) linhaHora += " ($local)";
 
                         return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
+                          margin: const EdgeInsets.only(bottom: 12),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Título do Evento
-                              Row(
-                                children: [
-                                  Text("$hora ", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[900])),
-                                  Expanded(child: Text(titulo, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))),
-                                ],
-                              ),
-                              // Detalhes (Dirigente e Pregador)
-                              if (dirigente != null && dirigente.isNotEmpty)
+                              Text(linhaHora, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[900], fontSize: 14)),
+                              
+                              if (titulo.isNotEmpty)
                                 Padding(
-                                  padding: const EdgeInsets.only(left: 45), // Indentação para ficar alinhado
-                                  child: Text("👤 Dirigente: $dirigente", style: TextStyle(fontSize: 12, color: Colors.grey[800])),
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text("✨ $titulo", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                                 ),
-                              if (pregador != null && pregador.isNotEmpty)
+                                
+                              if (dirigente.isNotEmpty)
                                 Padding(
-                                  padding: const EdgeInsets.only(left: 45),
-                                  child: Text("📖 Pregador: $pregador", style: TextStyle(fontSize: 12, color: Colors.grey[800])),
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text("👤 Dirigente: $dirigente", style: TextStyle(fontSize: 13, color: Colors.grey[800])),
+                                ),
+                                
+                              if (pregador.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text("🎤 Pregador: $pregador", style: TextStyle(fontSize: 13, color: Colors.grey[800])),
                                 ),
                             ],
                           ),
