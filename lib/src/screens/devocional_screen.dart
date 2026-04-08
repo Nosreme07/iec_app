@@ -5,6 +5,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'dart:typed_data';
+import 'package:share_plus/share_plus.dart';
+import 'package:http/http.dart' as http; // NOVO PACOTE PARA BAIXAR A IMAGEM
 
 class DevocionalScreen extends StatefulWidget {
   const DevocionalScreen({super.key});
@@ -29,7 +31,7 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
     _autorController.clear();
     
     XFile? imagemSelecionada;
-    Uint8List? imagemBytes; // Usamos bytes para funcionar perfeitamente na Web e Celular
+    Uint8List? imagemBytes; 
     bool isSavingLocal = false;
 
     showDialog(
@@ -128,14 +130,12 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
                       final user = FirebaseAuth.instance.currentUser;
                       String? imageUrl;
 
-                      // 1. FAZ O UPLOAD DA IMAGEM SE ELA FOI ESCOLHIDA
                       if (imagemBytes != null) {
                         final storageRef = FirebaseStorage.instance.ref().child('devocionais/${DateTime.now().millisecondsSinceEpoch}.jpg');
-                        await storageRef.putData(imagemBytes!); // Envia os bytes para o Storage
-                        imageUrl = await storageRef.getDownloadURL(); // Pega o link final gerado
+                        await storageRef.putData(imagemBytes!); 
+                        imageUrl = await storageRef.getDownloadURL(); 
                       }
                       
-                      // 2. SALVA NO FIRESTORE
                       await FirebaseFirestore.instance.collection('devocionais').add({
                         'titulo': _tituloController.text.trim(),
                         'versiculo': _versiculoController.text.trim(),
@@ -143,7 +143,7 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
                         'data': FieldValue.serverTimestamp(),
                         'autor_uid': user?.uid, 
                         'autor_nome': _autorController.text.trim(), 
-                        'imagem_url': imageUrl, // <--- SALVA O LINK DA IMAGEM AQUI
+                        'imagem_url': imageUrl, 
                       });
                       
                       if (mounted) {
@@ -172,8 +172,13 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
     );
   }
 
-  // --- TELA DE LEITURA COMPLETA ---
+  // --- TELA DE LEITURA COMPLETA E COMPARTILHAMENTO ---
   void _openDetail(Map<String, dynamic> data) {
+    String dataExtensa = "";
+    if (data['data'] != null) {
+      dataExtensa = DateFormat("d 'de' MMMM 'de' y", "pt_BR").format((data['data'] as Timestamp).toDate());
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -182,12 +187,75 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
             title: const Text("Leitura", style: TextStyle(color: Colors.white)),
             backgroundColor: Colors.indigo,
             iconTheme: const IconThemeData(color: Colors.white),
+            actions: [
+              // --- BOTÃO DE COMPARTILHAMENTO COM IMAGEM ---
+              IconButton(
+                icon: const Icon(Icons.share),
+                tooltip: "Compartilhar Devocional",
+                onPressed: () async {
+                  String titulo = data['titulo'] ?? "Devocional";
+                  String autor = data['autor_nome'] ?? "Autor Desconhecido";
+                  String versiculo = data['versiculo'] ?? "";
+                  String texto = data['texto'] ?? "";
+                  String? imageUrl = data['imagem_url'];
+
+                  // Prepara o texto formatado
+                  StringBuffer sb = StringBuffer();
+                  sb.writeln("📖 *$titulo*");
+                  sb.writeln("✍️ Por: $autor");
+                  if (dataExtensa.isNotEmpty) sb.writeln("📅 $dataExtensa");
+                  sb.writeln(); 
+                  
+                  if (versiculo.isNotEmpty) {
+                    sb.writeln("_\"$versiculo\"_");
+                    sb.writeln(); 
+                  }
+                  
+                  sb.writeln(texto);
+                  sb.writeln(); 
+
+                  // Lógica de envio: Com Imagem ou Só Texto
+                  if (imageUrl != null && imageUrl.isNotEmpty) {
+                    // Mostra um loading enquanto baixa a imagem pro celular
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => const Center(child: CircularProgressIndicator(color: Colors.white)),
+                    );
+
+                    try {
+                      // Baixa a imagem da internet
+                      final response = await http.get(Uri.parse(imageUrl));
+                      
+                      // Transforma a imagem num arquivo temporário do celular para enviar pro Zap
+                      final xFile = XFile.fromData(
+                        response.bodyBytes, 
+                        mimeType: 'image/jpeg', 
+                        name: 'devocional.jpg'
+                      );
+
+                      if (mounted) Navigator.pop(context); // Fecha o loading
+                      
+                      // Compartilha Foto + Texto
+                      await Share.shareXFiles([xFile], text: sb.toString().trim());
+
+                    } catch (e) {
+                      if (mounted) Navigator.pop(context); // Fecha o loading se der erro
+                      // Se a imagem falhar por algum motivo (net fraca), envia só o texto
+                      await Share.share(sb.toString().trim());
+                    }
+                  } else {
+                    // Se o devocional não tem imagem, compartilha só o texto direto
+                    await Share.share(sb.toString().trim());
+                  }
+                },
+              ),
+            ],
           ),
           body: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // IMAGEM DE CAPA GRANDE NA LEITURA (Se existir)
                 if (data['imagem_url'] != null && data['imagem_url'].toString().isNotEmpty)
                   Image.network(
                     data['imagem_url'],
@@ -209,16 +277,12 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
                       Text(data['titulo'] ?? "", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo)),
                       const SizedBox(height: 10),
                       
-                      // EXIBE DATA E AUTOR
                       Row(
                         children: [
-                          if (data['data'] != null)
-                            Text(
-                              DateFormat("d 'de' MMMM 'de' y", "pt_BR").format((data['data'] as Timestamp).toDate()),
-                              style: TextStyle(color: Colors.grey[600], fontStyle: FontStyle.italic, fontSize: 13),
-                            ),
+                          if (dataExtensa.isNotEmpty)
+                            Text(dataExtensa, style: TextStyle(color: Colors.grey[600], fontStyle: FontStyle.italic, fontSize: 13)),
                           
-                          if (data['data'] != null && data['autor_nome'] != null)
+                          if (dataExtensa.isNotEmpty && data['autor_nome'] != null)
                             Text(" • ", style: TextStyle(color: Colors.grey[600])),
                           
                           if (data['autor_nome'] != null)
@@ -319,118 +383,76 @@ class _DevocionalScreenState extends State<DevocionalScreen> {
                     dataFormatada = DateFormat('dd/MM').format((data['data'] as Timestamp).toDate());
                   }
 
+                  // --- NOVO CARD PEQUENO E COMPACTO ---
                   return Card(
-                    margin: const EdgeInsets.only(bottom: 15),
-                    elevation: 3,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     child: InkWell(
                       onTap: () => _openDetail(data),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // --- IMAGEM DE CAPA NO CARD (Se houver) ---
-                          if (data['imagem_url'] != null && data['imagem_url'].toString().isNotEmpty)
-                            ClipRRect(
-                              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                              child: Image.network(
-                                data['imagem_url'],
-                                height: 160,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                                errorBuilder: (c, e, s) => const SizedBox(), // Esconde se falhar
-                              ),
-                            ),
-                          
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(color: Colors.orange[100], borderRadius: BorderRadius.circular(8)),
-                                          child: Text(dataFormatada, style: TextStyle(color: Colors.orange[900], fontWeight: FontWeight.bold, fontSize: 12)),
-                                        ),
-                                        if (data['autor_nome'] != null) ...[
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            "• ${data['autor_nome']}",
-                                            style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic),
-                                          ),
-                                        ]
-                                      ],
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(color: Colors.orange[100], borderRadius: BorderRadius.circular(6)),
+                                      child: Text(dataFormatada, style: TextStyle(color: Colors.orange[900], fontWeight: FontWeight.bold, fontSize: 11)),
                                     ),
-                                    if (canPost)
-                                      IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                        icon: const Icon(Icons.delete, color: Colors.grey, size: 20),
-                                        onPressed: () async {
-                                          bool confirm = await showDialog(
-                                            context: context, 
-                                            builder: (ctx) => AlertDialog(
-                                              title: const Text("Excluir"), content: const Text("Apagar devocional?"),
-                                              actions: [
-                                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Não")),
-                                                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Sim", style: TextStyle(color: Colors.red)))
-                                              ]
-                                            )
-                                          ) ?? false;
+                                    if (data['autor_nome'] != null) ...[
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        "• ${data['autor_nome']}",
+                                        style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic),
+                                      ),
+                                    ]
+                                  ],
+                                ),
+                                if (canPost)
+                                  IconButton(
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    icon: const Icon(Icons.delete, color: Colors.grey, size: 18),
+                                    onPressed: () async {
+                                      bool confirm = await showDialog(
+                                        context: context, 
+                                        builder: (ctx) => AlertDialog(
+                                          title: const Text("Excluir"), content: const Text("Apagar devocional?"),
+                                          actions: [
+                                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Não")),
+                                            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Sim", style: TextStyle(color: Colors.red)))
+                                          ]
+                                        )
+                                      ) ?? false;
 
-                                          if (confirm) {
-                                            // 1. Tenta apagar a imagem no Storage se existir
-                                            if (data['imagem_url'] != null && data['imagem_url'].toString().isNotEmpty) {
-                                              try {
-                                                await FirebaseStorage.instance.refFromURL(data['imagem_url']).delete();
-                                              } catch (e) {
-                                                debugPrint("Aviso: Falha ao apagar imagem do storage: $e");
-                                              }
-                                            }
-                                            // 2. Apaga o documento
-                                            await FirebaseFirestore.instance.collection('devocionais').doc(id).delete();
+                                      if (confirm) {
+                                        if (data['imagem_url'] != null && data['imagem_url'].toString().isNotEmpty) {
+                                          try {
+                                            await FirebaseStorage.instance.refFromURL(data['imagem_url']).delete();
+                                          } catch (e) {
+                                            debugPrint("Aviso: Falha ao apagar imagem do storage: $e");
                                           }
-                                        },
-                                      )
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  data['titulo'] ?? "Sem Título",
-                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo),
-                                ),
-                                const SizedBox(height: 6),
-                                if (data['versiculo'] != null)
-                                  Text(
-                                    "\"${data['versiculo']}\"",
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey[700]),
-                                  ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  data['texto'] ?? "",
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: Colors.grey[600]),
-                                ),
-                                const SizedBox(height: 10),
-                                const Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    Text("Ler devocional completo", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
-                                    Icon(Icons.arrow_forward, size: 14, color: Colors.blue)
-                                  ],
-                                )
+                                        }
+                                        await FirebaseFirestore.instance.collection('devocionais').doc(id).delete();
+                                      }
+                                    },
+                                  )
                               ],
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            Text(
+                              data['titulo'] ?? "Sem Título",
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.indigo),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );
