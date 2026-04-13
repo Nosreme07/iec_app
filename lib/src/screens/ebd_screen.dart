@@ -121,11 +121,12 @@ class _EbdSalasTabState extends State<EbdSalasTab> {
                     ])) ??
         false;
 
-    if (confirm)
+    if (confirm) {
       await FirebaseFirestore.instance
           .collection('ebd_salas')
           .doc(docId)
           .delete();
+    }
   }
 
   Future<void> _criarSalasPadrao() async {
@@ -176,8 +177,9 @@ class _EbdSalasTabState extends State<EbdSalasTab> {
                   .orderBy('nome')
                   .snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting)
+                if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
+                }
                 final salas = snapshot.data?.docs ?? [];
 
                 if (salas.isEmpty) {
@@ -326,11 +328,11 @@ class _TabAbertaState extends State<TabAberta> {
   final TextEditingController _professorController = TextEditingController();
   final TextEditingController _temaController = TextEditingController();
   final TextEditingController _ofertaController = TextEditingController();
-  final TextEditingController _bibliasController = TextEditingController(); // Novo: Biblias
+  final TextEditingController _bibliasController = TextEditingController(); 
   
   Map<String, bool> _presencas = {};
   List<String> _currentAlunos = [];
-  List<String> _visitantes = []; // Novo: Visitantes da aula atual
+  List<String> _visitantes = []; 
 
   final FocusNode _temaFocus = FocusNode();
   final FocusNode _ofertaFocus = FocusNode();
@@ -385,7 +387,7 @@ class _TabAbertaState extends State<TabAberta> {
 
         _visitantes = List<String>.from(data['visitantes'] ?? []);
         for (var v in _visitantes) {
-          _presencas[v] = true; // Visitantes já vem marcados
+          _presencas[v] = true; 
         }
 
         _aulaIniciada = true;
@@ -415,7 +417,6 @@ class _TabAbertaState extends State<TabAberta> {
 
     try {
       List<String> presentes = [];
-      // Só os alunos matriculados contam como "presentes" para estatísticas
       for (String aluno in _currentAlunos) {
         if (_presencas[aluno] == true) presentes.add(aluno);
       }
@@ -435,7 +436,7 @@ class _TabAbertaState extends State<TabAberta> {
         'data': FieldValue.serverTimestamp(),
         'data_str': dataHoje,
         'presentes': presentes,
-        'visitantes': _visitantes, // Salva a lista de visitantes a parte
+        'visitantes': _visitantes, 
         'ausentes': _currentAlunos.length - presentes.length,
         'total_matriculados': _currentAlunos.length,
         'oferta': oferta,
@@ -503,14 +504,12 @@ class _TabAbertaState extends State<TabAberta> {
                   if (nome.isEmpty) return;
                   
                   if (isVisitante) {
-                    // Adiciona apenas para a aula de hoje
                     setState(() {
                       _visitantes.add(nome);
                       _presencas[nome] = true;
                     });
                     _salvarDados(isEncerrar: false, silencioso: true);
                   } else {
-                    // Cadastra na sala oficial
                     await FirebaseFirestore.instance.collection('ebd_salas').doc(widget.salaId).update({
                       'alunos': FieldValue.arrayUnion([nome])
                     });
@@ -623,7 +622,6 @@ class _TabAbertaState extends State<TabAberta> {
           _currentAlunos = List<String>.from(data['alunos'] ?? []);
           _currentAlunos.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
-          // Junta alunos regulares e visitantes apenas para visualização
           List<String> exibicaoAlunos = [..._currentAlunos, ..._visitantes];
 
           // TELA INICIAL: Digitar Professor
@@ -709,7 +707,7 @@ class _TabAbertaState extends State<TabAberta> {
                             child: CheckboxListTile(
                               title: Row(
                                 children: [
-                                  Text(aluno, style: const TextStyle(fontWeight: FontWeight.w500)),
+                                  Expanded(child: Text(aluno, style: const TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
                                   if (isVisitante) ...[
                                     const SizedBox(width: 8),
                                     Container(
@@ -1125,354 +1123,388 @@ class EbdRelatoriosTab extends StatefulWidget {
 }
 
 class _EbdRelatoriosTabState extends State<EbdRelatoriosTab> {
-  bool _isMonthly = false;
+  String _tipoFiltro = 'diario'; // 'diario', 'mensal', 'anual'
   late DateTime _dataSelecionada;
 
   @override
   void initState() {
     super.initState();
     _dataSelecionada = DateTime.now();
-    _dataSelecionada = DateTime(
-        _dataSelecionada.year, _dataSelecionada.month, _dataSelecionada.day);
   }
 
   void _alterarData(int delta) {
     setState(() {
-      if (_isMonthly) {
-        _dataSelecionada =
-            DateTime(_dataSelecionada.year, _dataSelecionada.month + delta, 1);
+      if (_tipoFiltro == 'mensal') {
+        _dataSelecionada = DateTime(_dataSelecionada.year, _dataSelecionada.month + delta, 1);
+      } else if (_tipoFiltro == 'anual') {
+        _dataSelecionada = DateTime(_dataSelecionada.year + delta, 1, 1);
       } else {
         _dataSelecionada = _dataSelecionada.add(Duration(days: delta));
       }
     });
   }
 
+  Widget _btnFiltro(String titulo, String valor) {
+    bool ativo = _tipoFiltro == valor;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() {
+          _tipoFiltro = valor;
+          _dataSelecionada = DateTime.now();
+        }),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: ativo ? ebdColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: ebdColor),
+          ),
+          child: Text(titulo, textAlign: TextAlign.center, style: TextStyle(color: ativo ? Colors.white : ebdColor, fontWeight: FontWeight.bold)),
+        ),
+      ),
+    );
+  }
+
+  void _compartilharWhatsapp(String periodo, int p, int f, double o, int b, int v, int ta, int tf) {
+    StringBuffer sb = StringBuffer();
+    sb.writeln("📊 *RELATÓRIO GERAL E.B.D*");
+    sb.writeln("🗓️ Período: $periodo\n");
+    sb.writeln("👥 *Presenças Matriculados:* $p");
+    sb.writeln("❌ *Faltas:* $f");
+    sb.writeln("👋 *Visitantes:* $v");
+    sb.writeln("👥 *Total Alunos (Pres + Vis):* ${p + v}");
+    sb.writeln("📕 *Bíblias:* $b");
+    sb.writeln("💰 *Arrecadado:* R\$ ${o.toStringAsFixed(2)}\n");
+    sb.writeln("🔓 *Turmas Abertas:* $ta");
+    sb.writeln("✅ *Turmas Finalizadas:* $tf");
+
+    Share.share(sb.toString());
+  }
+
   @override
   Widget build(BuildContext context) {
     DateTime inicioBusca;
     DateTime fimBusca;
+    String textoFiltro = "";
 
-    if (_isMonthly) {
+    if (_tipoFiltro == 'diario') {
+      inicioBusca = DateTime(_dataSelecionada.year, _dataSelecionada.month, _dataSelecionada.day);
+      fimBusca = DateTime(_dataSelecionada.year, _dataSelecionada.month, _dataSelecionada.day, 23, 59, 59);
+      textoFiltro = DateFormat('dd/MM/yyyy', 'pt_BR').format(_dataSelecionada);
+    } else if (_tipoFiltro == 'mensal') {
       inicioBusca = DateTime(_dataSelecionada.year, _dataSelecionada.month, 1);
-      fimBusca = DateTime(
-          _dataSelecionada.year, _dataSelecionada.month + 1, 0, 23, 59, 59);
+      fimBusca = DateTime(_dataSelecionada.year, _dataSelecionada.month + 1, 0, 23, 59, 59);
+      textoFiltro = DateFormat('MMMM yyyy', 'pt_BR').format(_dataSelecionada).toUpperCase();
     } else {
-      inicioBusca = DateTime(
-          _dataSelecionada.year, _dataSelecionada.month, _dataSelecionada.day);
-      fimBusca = DateTime(_dataSelecionada.year, _dataSelecionada.month,
-          _dataSelecionada.day, 23, 59, 59);
+      inicioBusca = DateTime(_dataSelecionada.year, 1, 1);
+      fimBusca = DateTime(_dataSelecionada.year, 12, 31, 23, 59, 59);
+      textoFiltro = _dataSelecionada.year.toString();
     }
-
-    String textoFiltro = _isMonthly
-        ? DateFormat('MMMM yyyy', 'pt_BR')
-            .format(_dataSelecionada)
-            .toUpperCase()
-        : DateFormat('dd/MM/yyyy', 'pt_BR').format(_dataSelecionada);
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
       body: Column(
         children: [
+          // BARRA DE CONTROLE E FILTROS
           Container(
             color: ebdColor.withOpacity(0.1),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Column(
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    const Text("Diário",
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    Switch(
-                        value: _isMonthly,
-                        activeColor: ebdColor,
-                        onChanged: (val) => setState(() => _isMonthly = val)),
-                    const Text("Mensal",
-                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    _btnFiltro("Diário", "diario"),
+                    const SizedBox(width: 8),
+                    _btnFiltro("Mensal", "mensal"),
+                    const SizedBox(width: 8),
+                    _btnFiltro("Anual", "anual"),
                   ],
                 ),
+                const SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    IconButton(
-                        icon: const Icon(Icons.arrow_back_ios, size: 18),
-                        onPressed: () => _alterarData(-1)),
-                    Text(textoFiltro,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: ebdColor)),
-                    IconButton(
-                        icon: const Icon(Icons.arrow_forward_ios, size: 18),
-                        onPressed: () => _alterarData(1)),
+                    IconButton(icon: const Icon(Icons.arrow_back_ios, size: 18), onPressed: () => _alterarData(-1)),
+                    
+                    // --- DATA CLICÁVEL COM POPUP ---
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () {
+                        EbdStatsHelper.abrirSeletorData(context, tipo: _tipoFiltro, onConfirm: (ano, mes, dia) {
+                          setState(() {
+                            if (_tipoFiltro == 'diario') {
+                              _dataSelecionada = DateTime(ano, mes ?? 1, dia ?? 1);
+                            } else if (_tipoFiltro == 'mensal') {
+                              _dataSelecionada = DateTime(ano, mes ?? 1, 1);
+                            } else {
+                              _dataSelecionada = DateTime(ano, 1, 1);
+                            }
+                          });
+                        });
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(textoFiltro, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: ebdColor)),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.arrow_drop_down, color: ebdColor),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 18), onPressed: () => _alterarData(1)),
                   ],
                 ),
               ],
             ),
           ),
+          
           Expanded(
-              child: StreamBuilder<QuerySnapshot>(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('ebd_salas').snapshots(),
+              builder: (context, snapshotSalas) {
+                if (!snapshotSalas.hasData) return const Center(child: CircularProgressIndicator());
+                List<DocumentSnapshot> salasDocs = snapshotSalas.data!.docs;
+
+                return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
-                      .collection('ebd_salas')
+                      .collection('ebd_registros')
+                      .where('data', isGreaterThanOrEqualTo: Timestamp.fromDate(inicioBusca))
+                      .where('data', isLessThanOrEqualTo: Timestamp.fromDate(fimBusca))
                       .snapshots(),
-                  builder: (context, snapshotSalas) {
-                    if (!snapshotSalas.hasData)
-                      return const Center(child: CircularProgressIndicator());
-                    List<DocumentSnapshot> salasDocs = snapshotSalas.data!.docs;
+                  builder: (context, snapshotRegistros) {
+                    if (!snapshotRegistros.hasData) return const Center(child: CircularProgressIndicator());
 
-                    return StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('ebd_registros')
-                          .where('data',
-                              isGreaterThanOrEqualTo:
-                                  Timestamp.fromDate(inicioBusca))
-                          .where('data',
-                              isLessThanOrEqualTo: Timestamp.fromDate(fimBusca))
-                          .snapshots(),
-                      builder: (context, snapshotRegistros) {
-                        if (!snapshotRegistros.hasData)
-                          return const Center(
-                              child: CircularProgressIndicator());
+                    final relatorios = snapshotRegistros.data!.docs;
 
-                        final relatorios = snapshotRegistros.data!.docs;
+                    int totalPresentes = 0;
+                    int totalAusentes = 0;
+                    double totalOfertas = 0.0;
+                    int totalBiblias = 0;
+                    int totalVisitantes = 0;
+                    int turmasAbertas = 0;
+                    int turmasFinalizadas = 0;
 
-                        int totalPresentes = 0;
-                        int totalAusentes = 0;
-                        double totalOfertas = 0.0;
-                        Set<String> diasLetivos = {};
+                    Map<String, Map<String, dynamic>> dadosPorSala = {};
+                    for (var s in salasDocs) {
+                      dadosPorSala[s.id] = {
+                        'nome': s['nome'],
+                        'alunos': List<String>.from(s['alunos'] ?? []),
+                        'presentes': 0,
+                        'faltas': 0,
+                        'visitantes': 0,
+                        'biblias': 0,
+                        'oferta': 0.0,
+                        'aulas_dadas': 0,
+                        'lista_presentes': <String>[], // Lista real de presenças para o check diario
+                      };
+                    }
 
-                        Map<String, Map<String, dynamic>> dadosPorSala = {};
-                        for (var s in salasDocs) {
-                          dadosPorSala[s.id] = {
-                            'nome': s['nome'],
-                            'alunos': List<String>.from(s['alunos'] ?? []),
-                            'presentes': 0,
-                            'faltas': 0,
-                            'oferta': 0.0,
-                            'aulas_dadas': 0
-                          };
-                        }
+                    for (var doc in relatorios) {
+                      var data = doc.data() as Map<String, dynamic>;
+                      String sid = data['sala_id'];
+                      int p = (data['presentes'] as List?)?.length ?? 0;
+                      int a = data['ausentes'] ?? 0;
+                      double o = (data['oferta'] ?? 0.0).toDouble();
+                      
+                      int b = data['biblias'] ?? 0;
+                      int v = (data['visitantes'] as List?)?.length ?? 0;
+                      String status = data['status'] ?? 'finalizada';
 
-                        for (var doc in relatorios) {
-                          var data = doc.data() as Map<String, dynamic>;
-                          String sid = data['sala_id'];
-                          int p = (data['presentes'] as List?)?.length ?? 0;
-                          int a = data['ausentes'] ?? 0;
-                          double o = (data['oferta'] ?? 0.0).toDouble();
-                          diasLetivos.add(data['data_str']);
+                      totalPresentes += p;
+                      totalAusentes += a;
+                      totalOfertas += o;
+                      totalBiblias += b;
+                      totalVisitantes += v;
+                      
+                      if (status == 'aberta') turmasAbertas++;
+                      else turmasFinalizadas++;
 
-                          totalPresentes += p;
-                          totalAusentes += a;
-                          totalOfertas += o;
+                      if (dadosPorSala.containsKey(sid)) {
+                        dadosPorSala[sid]!['presentes'] += p;
+                        dadosPorSala[sid]!['faltas'] += a;
+                        dadosPorSala[sid]!['oferta'] += o;
+                        dadosPorSala[sid]!['biblias'] += b;
+                        dadosPorSala[sid]!['visitantes'] += v;
+                        dadosPorSala[sid]!['aulas_dadas'] += 1;
+                        
+                        List<dynamic> presentesList = data['presentes'] ?? [];
+                        dadosPorSala[sid]!['lista_presentes'].addAll(presentesList.map((e) => e.toString()));
+                      }
+                    }
 
-                          if (dadosPorSala.containsKey(sid)) {
-                            dadosPorSala[sid]!['presentes'] += p;
-                            dadosPorSala[sid]!['faltas'] += a;
-                            dadosPorSala[sid]!['oferta'] += o;
-                            dadosPorSala[sid]!['aulas_dadas'] += 1;
-                          }
-                        }
+                    int totalMatriculadosGlobal = totalPresentes + totalAusentes;
+                    double percGeral = totalMatriculadosGlobal > 0 ? (totalPresentes / totalMatriculadosGlobal) * 100 : 0;
 
-                        int totalMatriculadosGlobal =
-                            totalPresentes + totalAusentes;
-                        double percGeral = totalMatriculadosGlobal > 0
-                            ? (totalPresentes / totalMatriculadosGlobal) * 100
-                            : 0;
-
-                        return Stack(
+                    return Stack(
+                      children: [
+                        ListView(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
                           children: [
-                            ListView(
-                              padding:
-                                  const EdgeInsets.fromLTRB(12, 12, 12, 80),
-                              children: [
-                                Card(
-                                  color: Colors.white,
-                                  elevation: 3,
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12)),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      children: [
-                                        const Text(
-                                            "MÉDIA DE FREQUÊNCIA DA E.B.D",
-                                            style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 16)),
-                                        const SizedBox(height: 10),
-                                        if (totalMatriculadosGlobal == 0)
-                                          const Text(
-                                              "Sem aulas registradas no período",
-                                              style:
-                                                  TextStyle(color: Colors.grey))
-                                        else ...[
-                                          ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                            child: Row(
-                                              children: [
-                                                Expanded(
-                                                    flex: totalPresentes,
-                                                    child: Container(
-                                                        height: 20,
-                                                        color: Colors.green)),
-                                                Expanded(
-                                                    flex: totalAusentes,
-                                                    child: Container(
-                                                        height: 20,
-                                                        color: Colors.red)),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                  "Presenças: ${percGeral.toStringAsFixed(1)}%",
-                                                  style: const TextStyle(
-                                                      color: Colors.green,
-                                                      fontWeight:
-                                                          FontWeight.bold)),
-                                              Text(
-                                                  "Faltas: ${(100 - percGeral).toStringAsFixed(1)}%",
-                                                  style: const TextStyle(
-                                                      color: Colors.red,
-                                                      fontWeight:
-                                                          FontWeight.bold)),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 15),
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceAround,
-                                            children: [
-                                              _buildMediaItem(
-                                                  Icons.people,
-                                                  "Presenças",
-                                                  totalPresentes.toString()),
-                                              _buildMediaItem(
-                                                  Icons.person_off,
-                                                  "Faltas",
-                                                  totalAusentes.toString()),
-                                              _buildMediaItem(
-                                                  Icons.attach_money,
-                                                  "Arrecadado",
-                                                  "R\$ ${totalOfertas.toStringAsFixed(2)}"),
-                                            ],
-                                          )
+                            Card(
+                              color: Colors.white,
+                              elevation: 3,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  children: [
+                                    Text("RESUMO GERAL ($textoFiltro)", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                    const SizedBox(height: 10),
+                                    if (totalMatriculadosGlobal == 0 && totalVisitantes == 0)
+                                      const Text("Sem aulas registradas no período", style: TextStyle(color: Colors.grey))
+                                    else ...[
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Row(
+                                          children: [
+                                            Expanded(flex: totalPresentes, child: Container(height: 10, color: Colors.green)),
+                                            Expanded(flex: totalAusentes, child: Container(height: 10, color: Colors.red)),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text("Presenças: ${percGeral.toStringAsFixed(1)}%", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
+                                          Text("Faltas: ${(totalMatriculadosGlobal > 0 ? 100 - percGeral : 0).toStringAsFixed(1)}%", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13)),
                                         ],
-                                      ],
-                                    ),
-                                  ),
+                                      ),
+                                      const SizedBox(height: 25),
+                                      
+                                      // --- GRID COM TODOS OS 7 DADOS E ÍCONES MAIORES ---
+                                      Wrap(
+                                        alignment: WrapAlignment.spaceAround,
+                                        spacing: 10,
+                                        runSpacing: 20,
+                                        children: [
+                                          _buildMediaItem(Icons.people, "Presenças", totalPresentes.toString()),
+                                          _buildMediaItem(Icons.person_off, "Faltas", totalAusentes.toString()),
+                                          _buildMediaItem(Icons.emoji_people, "Visitantes", totalVisitantes.toString()),
+                                          _buildMediaItem(Icons.menu_book, "Bíblias", totalBiblias.toString()),
+                                          _buildMediaItem(Icons.attach_money, "Arrecadado", "R\$ ${totalOfertas.toStringAsFixed(2)}"),
+                                          _buildMediaItem(Icons.lock_open, "T. Abertas", turmasAbertas.toString()),
+                                          _buildMediaItem(Icons.check_circle, "T. Finaliz.", turmasFinalizadas.toString()),
+                                        ],
+                                      )
+                                    ],
+                                  ],
                                 ),
-                                const SizedBox(height: 16),
-                                const Text("Salas e Alunos Matriculados:",
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                        color: Colors.black87)),
-                                const SizedBox(height: 8),
-                                ...dadosPorSala.entries.map((entry) {
-                                  String sid = entry.key;
-                                  var sData = entry.value;
-
-                                  int p = sData['presentes'];
-                                  int a = sData['faltas'];
-                                  int aulas = sData['aulas_dadas'];
-                                  List<String> alunosDaSala = sData['alunos'];
-
-                                  int totalEsperado = p + a;
-                                  double percSala = totalEsperado > 0
-                                      ? (p / totalEsperado) * 100
-                                      : 0;
-
-                                  return Card(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    child: ExpansionTile(
-                                      leading: CircleAvatar(
-                                          backgroundColor: ebdColor,
-                                          child: Text(
-                                              "${percSala.toStringAsFixed(0)}%",
-                                              style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 12,
-                                                  fontWeight:
-                                                      FontWeight.bold))),
-                                      title: Text(sData['nome'],
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold)),
-                                      subtitle: Text(
-                                          "${alunosDaSala.length} alunos | $aulas aulas",
-                                          style: const TextStyle(fontSize: 12)),
-                                      children: [
-                                        const Divider(height: 1),
-                                        if (alunosDaSala.isEmpty)
-                                          const Padding(
-                                              padding: EdgeInsets.all(16),
-                                              child: Text(
-                                                  "Nenhum aluno matriculado nesta sala.",
-                                                  style: TextStyle(
-                                                      color: Colors.grey))),
-                                        ...alunosDaSala.map((nomeAluno) {
-                                          return ListTile(
-                                            leading: const Icon(Icons.person,
-                                                color: Colors.grey, size: 20),
-                                            title: Text(nomeAluno,
-                                                style: const TextStyle(
-                                                    fontSize: 14)),
-                                            trailing: const Icon(
-                                                Icons.analytics,
-                                                color: Colors.blue,
-                                                size: 20),
-                                            onTap: () =>
-                                                EbdStatsHelper.showOptions(
-                                                    context, nomeAluno, sid),
-                                          );
-                                        })
-                                      ],
-                                    ),
-                                  );
-                                })
-                              ],
-                            ),
-                            Positioned(
-                              bottom: 16,
-                              right: 16,
-                              child: FloatingActionButton.extended(
-                                heroTag: "btn_pdf_relatorio",
-                                backgroundColor: Colors.red[700],
-                                icon: const Icon(Icons.picture_as_pdf,
-                                    color: Colors.white),
-                                label: const Text("Exportar PDF",
-                                    style: TextStyle(color: Colors.white)),
-                                onPressed: () => EbdStatsHelper.opcoesGerarPdf(
-                                    context, salasDocs),
                               ),
-                            )
+                            ),
+                            const SizedBox(height: 16),
+                            const Text("Detalhamento das Salas:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                            const SizedBox(height: 8),
+                            ...dadosPorSala.entries.map((entry) {
+                              String sid = entry.key;
+                              var sData = entry.value;
+
+                              int p = sData['presentes'];
+                              int a = sData['faltas'];
+                              int aulas = sData['aulas_dadas'];
+                              List<String> alunosDaSala = sData['alunos'];
+
+                              int totalEsperado = p + a;
+                              double percSala = totalEsperado > 0 ? (p / totalEsperado) * 100 : 0;
+
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: ExpansionTile(
+                                  leading: CircleAvatar(
+                                      backgroundColor: ebdColor,
+                                      child: Text("${percSala.toStringAsFixed(0)}%", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))),
+                                  title: Text(sData['nome'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Text("${alunosDaSala.length} matriculados | $aulas aulas dadas", style: const TextStyle(fontSize: 12)),
+                                  children: [
+                                    const Divider(height: 1),
+                                    if (alunosDaSala.isEmpty)
+                                      const Padding(padding: EdgeInsets.all(16), child: Text("Nenhum aluno matriculado nesta sala.", style: TextStyle(color: Colors.grey))),
+                                    ...alunosDaSala.map((nomeAluno) {
+                                      
+                                      Widget trailingIcon;
+                                      if (_tipoFiltro == 'diario') {
+                                        if (aulas == 0) {
+                                          trailingIcon = const Icon(Icons.remove, color: Colors.grey, size: 22);
+                                        } else {
+                                          bool isPresente = (sData['lista_presentes'] as List).contains(nomeAluno);
+                                          trailingIcon = isPresente 
+                                              ? const Icon(Icons.check_circle, color: Colors.green, size: 22)
+                                              : const Icon(Icons.cancel, color: Colors.red, size: 22);
+                                        }
+                                      } else {
+                                        trailingIcon = const Icon(Icons.analytics, color: Colors.blue, size: 22);
+                                      }
+
+                                      return ListTile(
+                                        leading: const Icon(Icons.person, color: Colors.grey, size: 20),
+                                        title: Text(nomeAluno, style: const TextStyle(fontSize: 14)),
+                                        trailing: trailingIcon,
+                                        onTap: () => EbdStatsHelper.showOptions(context, nomeAluno, sid),
+                                      );
+                                    })
+                                  ],
+                                ),
+                              );
+                            })
                           ],
-                        );
-                      },
+                        ),
+                        
+                        // --- BOTÕES DE COMPARTILHAR E PDF (FLUTUANTES) ---
+                        Positioned(
+                          bottom: 16,
+                          right: 16,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              FloatingActionButton(
+                                heroTag: "btn_zap",
+                                backgroundColor: Colors.green,
+                                child: const Icon(Icons.share, color: Colors.white),
+                                onPressed: () => _compartilharWhatsapp(textoFiltro, totalPresentes, totalAusentes, totalOfertas, totalBiblias, totalVisitantes, turmasAbertas, turmasFinalizadas),
+                              ),
+                              if (_tipoFiltro != 'diario') ...[
+                                const SizedBox(width: 10),
+                                FloatingActionButton.extended(
+                                  heroTag: "btn_pdf_relatorio",
+                                  backgroundColor: Colors.red[700],
+                                  icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+                                  label: const Text("Exportar PDF", style: TextStyle(color: Colors.white)),
+                                  onPressed: () {
+                                    DateTime dataRef = _dataSelecionada;
+                                    PdfEbdGenerator.gerarPdf(context, tipo: _tipoFiltro, dataRef: dataRef, salas: salasDocs, registros: relatorios);
+                                  },
+                                ),
+                              ]
+                            ],
+                          ),
+                        )
+                      ],
                     );
-                  })),
+                  },
+                );
+              })
+          ),
         ],
       ),
     );
   }
 
   Widget _buildMediaItem(IconData icon, String label, String value) {
-    return Column(
-      children: [
-        Icon(icon, color: ebdColor, size: 28),
-        const SizedBox(height: 4),
-        Text(value,
-            style: const TextStyle(
-                color: Colors.black87,
-                fontWeight: FontWeight.bold,
-                fontSize: 16)),
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-      ],
+    return SizedBox(
+      width: 105, 
+      child: Column(
+        children: [
+          Icon(icon, color: ebdColor, size: 32),
+          const SizedBox(height: 6),
+          Text(value, style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ],
+      ),
     );
   }
 }
@@ -1591,17 +1623,7 @@ class _EbdAlunosTabState extends State<EbdAlunosTab> {
                       Text("Total: ${todosAlunos.length} Matriculados",
                           style: const TextStyle(
                               fontWeight: FontWeight.bold, color: ebdColor)),
-                      ElevatedButton.icon(
-                        onPressed: () =>
-                            EbdStatsHelper.opcoesGerarPdf(context, salas),
-                        icon: const Icon(Icons.picture_as_pdf, size: 16),
-                        label: const Text("PDF"),
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red[700],
-                            foregroundColor: Colors.white,
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 10)),
-                      )
+                      // Deixado PDF Geral de Alunos opcional
                     ],
                   ),
                 ),
@@ -1658,6 +1680,14 @@ class EbdStatsHelper {
         initialDate: DateTime.now(),
         firstDate: DateTime(2020),
         lastDate: DateTime(2030),
+        builder: (context, child) {
+          return Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: const ColorScheme.light(primary: ebdColor),
+            ),
+            child: child!,
+          );
+        },
       );
       if (picked != null) onConfirm(picked.year, picked.month, picked.day);
     } else {
@@ -1863,18 +1893,8 @@ class EbdStatsHelper {
     DateTime inicioBusca = DateTime(ano, 1, 1);
     DateTime fimBusca = DateTime(ano, 12, 31, 23, 59, 59);
     List<String> nomeMeses = [
-      "Janeiro",
-      "Fevereiro",
-      "Março",
-      "Abril",
-      "Maio",
-      "Junho",
-      "Julho",
-      "Agosto",
-      "Setembro",
-      "Outubro",
-      "Novembro",
-      "Dezembro"
+      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho",
+      "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
     ];
 
     try {
@@ -2076,9 +2096,15 @@ class PdfEbdGenerator {
     String dataAtual = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
     Map<String, Map<String, dynamic>> estatisticasPorSala = {};
+    
+    // Novas métricas atualizadas
     int totalPresentesGeral = 0;
     int totalFaltasGeral = 0;
     double totalOfertasGeral = 0.0;
+    int totalBibliasGeral = 0;
+    int totalVisitantesGeral = 0;
+    int turmasAbertas = 0;
+    int turmasFinalizadas = 0;
 
     for (var s in salas) {
       String sId = s.id;
@@ -2086,7 +2112,9 @@ class PdfEbdGenerator {
         'nome': s['nome'],
         'alunos': {},
         'total_aulas': 0,
-        'oferta_total': 0.0
+        'oferta_total': 0.0,
+        'biblias_total': 0,
+        'visitantes_total': 0,
       };
 
       for (var aluno in List<String>.from(s['alunos'] ?? [])) {
@@ -2102,15 +2130,26 @@ class PdfEbdGenerator {
       int p = (data['presentes'] as List?)?.length ?? 0;
       int a = data['ausentes'] ?? 0;
       double o = (data['oferta'] ?? 0.0).toDouble();
+      int b = data['biblias'] ?? 0;
+      int v = (data['visitantes'] as List?)?.length ?? 0;
+      String status = data['status'] ?? 'finalizada';
 
       totalPresentesGeral += p;
       totalFaltasGeral += a;
       totalOfertasGeral += o;
+      totalBibliasGeral += b;
+      totalVisitantesGeral += v;
+
+      if (status == 'aberta') turmasAbertas++;
+      else turmasFinalizadas++;
 
       if (!estatisticasPorSala.containsKey(sId)) continue;
 
       estatisticasPorSala[sId]!['total_aulas'] += 1;
       estatisticasPorSala[sId]!['oferta_total'] += o;
+      estatisticasPorSala[sId]!['biblias_total'] += b;
+      estatisticasPorSala[sId]!['visitantes_total'] += v;
+      
       List<dynamic> presentes = data['presentes'] ?? [];
 
       estatisticasPorSala[sId]!['alunos'].forEach((aluno, stats) {
@@ -2141,7 +2180,6 @@ class PdfEbdGenerator {
         },
         build: (pw.Context context) {
           return [
-            // CABEÇALHO OFICIAL EM TEXTO
             pw.Center(
                 child: pw.Text("Igreja Evangélica Congregacional em Moreno",
                     style: pw.TextStyle(
@@ -2162,27 +2200,46 @@ class PdfEbdGenerator {
                         fontSize: 16, fontWeight: pw.FontWeight.bold))),
             pw.SizedBox(height: 20),
 
-            // RESUMO GERAL ATUALIZADO
-            pw.Text("RESUMO GERAL",
-                style:
-                    pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            // RESUMO GERAL ATUALIZADO NO PDF
+            pw.Text("RESUMO GERAL", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
             pw.Divider(),
-            pw.Text("Número de presenças: $totalPresentesGeral"),
-            pw.Text("Número de faltas: $totalFaltasGeral"),
-            pw.Text("Frequência média: ${percGeral.toStringAsFixed(1)}%"),
-            pw.Text("Arrecadação: R\$ ${totalOfertasGeral.toStringAsFixed(2)}"),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text("Presenças (Matriculados): $totalPresentesGeral"),
+                    pw.Text("Faltas: $totalFaltasGeral"),
+                    pw.Text("Visitantes: $totalVisitantesGeral"),
+                    pw.Text("Total de Alunos (Pres + Vis): ${totalPresentesGeral + totalVisitantesGeral}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  ]
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text("Arrecadação: R\$ ${totalOfertasGeral.toStringAsFixed(2)}"),
+                    pw.Text("Bíblias Presentes: $totalBibliasGeral"),
+                    pw.Text("Turmas Abertas: $turmasAbertas"),
+                    pw.Text("Turmas Finalizadas: $turmasFinalizadas"),
+                  ]
+                )
+              ]
+            ),
+            pw.SizedBox(height: 10),
+            pw.Text("Frequência média da igreja: ${percGeral.toStringAsFixed(1)}%", style: pw.TextStyle(color: PdfColors.green800, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 20),
 
             // DETALHES POR SALA
-            pw.Text("DETALHAMENTO POR SALA",
-                style:
-                    pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.Text("DETALHAMENTO POR SALA", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
             pw.Divider(),
             ...estatisticasPorSala.entries.map((entry) {
               var sData = entry.value;
               String nomeTurma = sData['nome'];
               int totalAulas = sData['total_aulas'];
               double ofertaSala = sData['oferta_total'];
+              int bibliasSala = sData['biblias_total'];
+              int visitantesSala = sData['visitantes_total'];
 
               int totalPresencasSala = 0;
               int totalFaltasSala = 0;
@@ -2206,8 +2263,7 @@ class PdfEbdGenerator {
               });
 
               int totalSala = totalPresencasSala + totalFaltasSala;
-              double percSala =
-                  totalSala > 0 ? (totalPresencasSala / totalSala) * 100 : 0;
+              double percSala = totalSala > 0 ? (totalPresencasSala / totalSala) * 100 : 0;
 
               return pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -2217,7 +2273,7 @@ class PdfEbdGenerator {
                       color: PdfColors.grey300,
                       padding: const pw.EdgeInsets.all(5),
                       child: pw.Text(
-                          "Turma: $nomeTurma | Freq. Turma: ${percSala.toStringAsFixed(1)}% | Aulas: $totalAulas | Arrecadado: R\$ ${ofertaSala.toStringAsFixed(2)}",
+                          "Turma: $nomeTurma | Freq: ${percSala.toStringAsFixed(1)}% | Aulas: $totalAulas | Vis: $visitantesSala | Bíblias: $bibliasSala | Oferta: R\$ ${ofertaSala.toStringAsFixed(2)}",
                           style: pw.TextStyle(
                               fontWeight: pw.FontWeight.bold, fontSize: 11)),
                     ),
