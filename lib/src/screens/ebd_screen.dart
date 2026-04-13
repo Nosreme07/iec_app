@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 
 // --- COR PRINCIPAL DA E.B.D ---
 const Color ebdColor = Color.fromARGB(255, 130, 2, 216);
@@ -251,7 +252,7 @@ class _EbdSalasTabState extends State<EbdSalasTab> {
                         onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (context) => EbdChamadaScreen(
+                                builder: (context) => TurmasEbdScreen(
                                     salaId: docId, salaNome: nome))),
                       ),
                     );
@@ -261,6 +262,855 @@ class _EbdSalasTabState extends State<EbdSalasTab> {
             ),
           );
         });
+  }
+}
+
+// ==========================================
+// TELA DE TURMA (COM ABAS: ABERTA E FINALIZADA)
+// ==========================================
+class TurmasEbdScreen extends StatelessWidget {
+  final String salaId;
+  final String salaNome;
+
+  const TurmasEbdScreen({super.key, required this.salaId, required this.salaNome});
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text("Turma: $salaNome", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+          backgroundColor: ebdColor,
+          iconTheme: const IconThemeData(color: Colors.white),
+          bottom: const TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white60,
+            indicatorColor: Colors.white,
+            tabs: [
+              Tab(text: "ABERTA", icon: Icon(Icons.lock_open)),
+              Tab(text: "FINALIZADAS", icon: Icon(Icons.history)),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            TabAberta(salaId: salaId, salaNome: salaNome),
+            TabFinalizadas(salaId: salaId, salaNome: salaNome),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ------------------------------------------
+// ABA ABERTA (CONTROLE DA AULA ATUAL)
+// ------------------------------------------
+class TabAberta extends StatefulWidget {
+  final String salaId;
+  final String salaNome;
+  
+  const TabAberta({super.key, required this.salaId, required this.salaNome});
+
+  @override
+  State<TabAberta> createState() => _TabAbertaState();
+}
+
+class _TabAbertaState extends State<TabAberta> {
+  bool _isLoading = true;
+  bool _aulaIniciada = false;
+  bool _aulaFinalizada = false;
+  bool _isSaving = false;
+
+  final TextEditingController _professorController = TextEditingController();
+  final TextEditingController _temaController = TextEditingController();
+  final TextEditingController _ofertaController = TextEditingController();
+  final TextEditingController _bibliasController = TextEditingController(); // Novo: Biblias
+  
+  Map<String, bool> _presencas = {};
+  List<String> _currentAlunos = [];
+  List<String> _visitantes = []; // Novo: Visitantes da aula atual
+
+  final FocusNode _temaFocus = FocusNode();
+  final FocusNode _ofertaFocus = FocusNode();
+  final FocusNode _bibliasFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAulaHoje();
+    _temaFocus.addListener(_onFocusChange);
+    _ofertaFocus.addListener(_onFocusChange);
+    _bibliasFocus.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (!_temaFocus.hasFocus && !_ofertaFocus.hasFocus && !_bibliasFocus.hasFocus) {
+      if (_aulaIniciada && !_aulaFinalizada) {
+        _salvarDados(isEncerrar: false, silencioso: true);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _professorController.dispose();
+    _temaController.dispose();
+    _ofertaController.dispose();
+    _bibliasController.dispose();
+    _temaFocus.dispose();
+    _ofertaFocus.dispose();
+    _bibliasFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAulaHoje() async {
+    String dataHoje = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    String registroId = "${dataHoje}_${widget.salaId}";
+
+    try {
+      var doc = await FirebaseFirestore.instance.collection('ebd_registros').doc(registroId).get();
+      if (doc.exists) {
+        var data = doc.data()!;
+        _professorController.text = data['professor'] ?? '';
+        _temaController.text = data['tema'] ?? '';
+        _ofertaController.text = (data['oferta'] ?? 0.0).toString();
+        _bibliasController.text = (data['biblias'] ?? 0).toString();
+        
+        List<dynamic> presentes = data['presentes'] ?? [];
+        for (var p in presentes) {
+          _presencas[p.toString()] = true;
+        }
+
+        _visitantes = List<String>.from(data['visitantes'] ?? []);
+        for (var v in _visitantes) {
+          _presencas[v] = true; // Visitantes já vem marcados
+        }
+
+        _aulaIniciada = true;
+        if (data['status'] == 'finalizada') {
+          _aulaFinalizada = true;
+        }
+      }
+    } catch(e) {
+      debugPrint("Erro ao carregar: $e");
+    } finally {
+      if(mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _iniciarAula() async {
+    if (_professorController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Digite o nome do professor!")));
+      return;
+    }
+    setState(() => _aulaIniciada = true);
+    await _salvarDados(isEncerrar: false, silencioso: true);
+  }
+
+  Future<void> _salvarDados({required bool isEncerrar, bool silencioso = false}) async {
+    if (!_aulaIniciada || _aulaFinalizada) return;
+    if (!silencioso) setState(() => _isSaving = true);
+
+    try {
+      List<String> presentes = [];
+      // Só os alunos matriculados contam como "presentes" para estatísticas
+      for (String aluno in _currentAlunos) {
+        if (_presencas[aluno] == true) presentes.add(aluno);
+      }
+
+      String valorString = _ofertaController.text.replaceAll(',', '.');
+      double oferta = double.tryParse(valorString) ?? 0.0;
+      int biblias = int.tryParse(_bibliasController.text) ?? 0;
+
+      String dataHoje = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      String registroId = "${dataHoje}_${widget.salaId}";
+
+      await FirebaseFirestore.instance.collection('ebd_registros').doc(registroId).set({
+        'sala_id': widget.salaId,
+        'sala_nome': widget.salaNome,
+        'professor': _professorController.text.trim(),
+        'tema': _temaController.text.trim(),
+        'data': FieldValue.serverTimestamp(),
+        'data_str': dataHoje,
+        'presentes': presentes,
+        'visitantes': _visitantes, // Salva a lista de visitantes a parte
+        'ausentes': _currentAlunos.length - presentes.length,
+        'total_matriculados': _currentAlunos.length,
+        'oferta': oferta,
+        'biblias': biblias,
+        'status': isEncerrar ? 'finalizada' : 'aberta', 
+        'registrado_por': FirebaseAuth.instance.currentUser?.uid,
+      }, SetOptions(merge: true));
+
+      if (mounted) {
+        if (isEncerrar) {
+          setState(() => _aulaFinalizada = true);
+          if (!silencioso) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Aula Finalizada! Dados gravados."), backgroundColor: Colors.green));
+          }
+        } else {
+          if (!silencioso) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Progresso salvo com sucesso!"), backgroundColor: Colors.blue));
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted && !silencioso) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao salvar: $e"), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted && !silencioso) setState(() => _isSaving = false);
+    }
+  }
+
+  void _addAlunoDialog() {
+    final controller = TextEditingController();
+    bool isVisitante = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            title: const Text("Novo Aluno"),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                    controller: controller,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: "Nome Completo", border: OutlineInputBorder())),
+                const SizedBox(height: 10),
+                CheckboxListTile(
+                  title: const Text("É apenas visitante?"),
+                  value: isVisitante,
+                  activeColor: ebdColor,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (val) {
+                    setStateDialog(() => isVisitante = val!);
+                  },
+                )
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: ebdColor, foregroundColor: Colors.white),
+                onPressed: () async {
+                  String nome = controller.text.trim();
+                  if (nome.isEmpty) return;
+                  
+                  if (isVisitante) {
+                    // Adiciona apenas para a aula de hoje
+                    setState(() {
+                      _visitantes.add(nome);
+                      _presencas[nome] = true;
+                    });
+                    _salvarDados(isEncerrar: false, silencioso: true);
+                  } else {
+                    // Cadastra na sala oficial
+                    await FirebaseFirestore.instance.collection('ebd_salas').doc(widget.salaId).update({
+                      'alunos': FieldValue.arrayUnion([nome])
+                    });
+                  }
+                  if (mounted) Navigator.pop(context);
+                },
+                child: const Text("Adicionar"),
+              )
+            ],
+          );
+        }
+      ),
+    );
+  }
+
+  void _editAlunoDialog(String nomeAntigo, bool isVisitante) {
+    final controller = TextEditingController(text: nomeAntigo);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Editar Aluno"),
+        content: TextField(
+            controller: controller,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(labelText: "Nome Completo", border: OutlineInputBorder())),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+            onPressed: () async {
+              String novoNome = controller.text.trim();
+              if (novoNome.isEmpty || novoNome == nomeAntigo) return;
+              
+              if (isVisitante) {
+                setState(() {
+                  _visitantes.remove(nomeAntigo);
+                  _visitantes.add(novoNome);
+                  _presencas.remove(nomeAntigo);
+                  _presencas[novoNome] = true;
+                });
+                _salvarDados(isEncerrar: false, silencioso: true);
+              } else {
+                await FirebaseFirestore.instance.collection('ebd_salas').doc(widget.salaId).update({
+                  'alunos': FieldValue.arrayRemove([nomeAntigo])
+                });
+                await FirebaseFirestore.instance.collection('ebd_salas').doc(widget.salaId).update({
+                  'alunos': FieldValue.arrayUnion([novoNome])
+                });
+              }
+              if (mounted) Navigator.pop(context);
+            },
+            child: const Text("Salvar"),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _removerAluno(String nomeAluno, bool isVisitante) async {
+    bool confirm = await showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+                    title: const Text("Remover Aluno"),
+                    content: Text("Deseja remover $nomeAluno?"),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")),
+                      TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("REMOVER", style: TextStyle(color: Colors.red)))
+                    ])) ?? false;
+    if (confirm) {
+      if (isVisitante) {
+        setState(() {
+          _visitantes.remove(nomeAluno);
+          _presencas.remove(nomeAluno);
+        });
+        _salvarDados(isEncerrar: false, silencioso: true);
+      } else {
+        await FirebaseFirestore.instance.collection('ebd_salas').doc(widget.salaId).update({
+          'alunos': FieldValue.arrayRemove([nomeAluno])
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+
+    if (_aulaFinalizada) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green, size: 80),
+            const SizedBox(height: 16),
+            Text("Aula de hoje finalizada!", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.grey[800])),
+            const SizedBox(height: 8),
+            Text("Confira o histórico na aba 'FINALIZADAS'.", style: TextStyle(color: Colors.grey[600])),
+          ],
+        ),
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('ebd_salas').doc(widget.salaId).snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData || !snapshot.data!.exists) return const Center(child: Text("Sala não encontrada."));
+
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          _currentAlunos = List<String>.from(data['alunos'] ?? []);
+          _currentAlunos.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+          // Junta alunos regulares e visitantes apenas para visualização
+          List<String> exibicaoAlunos = [..._currentAlunos, ..._visitantes];
+
+          // TELA INICIAL: Digitar Professor
+          if (!_aulaIniciada) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.school, size: 60, color: ebdColor),
+                        const SizedBox(height: 10),
+                        Text("Iniciar Aula E.B.D", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.grey[800])),
+                        const SizedBox(height: 5),
+                        Text(DateFormat('dd/MM/yyyy').format(DateTime.now()), style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                        const SizedBox(height: 20),
+                        TextField(
+                          controller: _professorController,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: const InputDecoration(labelText: "Nome do Professor(a)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.person)),
+                        ),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _iniciarAula,
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                            child: const Text("INICIAR TURMA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                          ),
+                        )
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          // TELA DA AULA ROLANDO
+          return Column(
+            children: [
+              Container(
+                color: ebdColor.withOpacity(0.1),
+                padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Prof: ${_professorController.text}", style: const TextStyle(fontWeight: FontWeight.bold, color: ebdColor, fontSize: 16)),
+                        Text("Matriculados: ${_currentAlunos.length}  |  Visitantes: ${_visitantes.length}", style: TextStyle(color: Colors.grey[700], fontSize: 12)),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.person_add, color: ebdColor),
+                      tooltip: "Adicionar Novo Aluno",
+                      onPressed: _addAlunoDialog,
+                    )
+                  ],
+                ),
+              ),
+
+              // LISTA DE ALUNOS E VISITANTES
+              Expanded(
+                child: exibicaoAlunos.isEmpty
+                    ? Center(child: Text("Nenhum aluno nesta sala.", style: TextStyle(color: Colors.grey[600])))
+                    : ListView.builder(
+                        itemCount: exibicaoAlunos.length,
+                        itemBuilder: (context, index) {
+                          String aluno = exibicaoAlunos[index];
+                          bool isVisitante = _visitantes.contains(aluno);
+                          _presencas.putIfAbsent(aluno, () => false);
+
+                          return Container(
+                            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+                            child: CheckboxListTile(
+                              title: Row(
+                                children: [
+                                  Text(aluno, style: const TextStyle(fontWeight: FontWeight.w500)),
+                                  if (isVisitante) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(color: Colors.orange[100], borderRadius: BorderRadius.circular(4)),
+                                      child: Text("Visitante", style: TextStyle(fontSize: 10, color: Colors.orange[900], fontWeight: FontWeight.bold)),
+                                    )
+                                  ]
+                                ],
+                              ),
+                              value: _presencas[aluno],
+                              activeColor: Colors.green,
+                              checkColor: Colors.white,
+                              secondary: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(icon: const Icon(Icons.edit, color: Colors.blue, size: 20), onPressed: () => _editAlunoDialog(aluno, isVisitante)),
+                                  IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20), onPressed: () => _removerAluno(aluno, isVisitante)),
+                                ],
+                              ),
+                              onChanged: (bool? value) {
+                                setState(() {
+                                  _presencas[aluno] = value ?? false;
+                                });
+                                _salvarDados(isEncerrar: false, silencioso: true);
+                              },
+                            ),
+                          );
+                        },
+                      ),
+              ),
+
+              // RODAPÉ (TEMA, OFERTA, BIBLIAS E BOTÕES)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _temaController,
+                      focusNode: _temaFocus,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        labelText: "Tema da Aula (Opcional)",
+                        prefixIcon: const Icon(Icons.menu_book, color: ebdColor),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _ofertaController,
+                            focusNode: _ofertaFocus,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: InputDecoration(
+                              labelText: "Oferta",
+                              prefixIcon: const Icon(Icons.attach_money, color: Colors.green),
+                              hintText: "0.00",
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              filled: true,
+                              fillColor: Colors.green[50],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _bibliasController,
+                            focusNode: _bibliasFocus,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: "Bíblias",
+                              prefixIcon: const Icon(Icons.auto_stories, color: Colors.brown),
+                              hintText: "0",
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _isSaving ? null : () => _salvarDados(isEncerrar: false),
+                            icon: const Icon(Icons.save, color: Colors.white, size: 18),
+                            label: const Text("SALVAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                            style: ElevatedButton.styleFrom(backgroundColor: ebdColor, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _isSaving ? null : () async {
+                              bool confirm = await showDialog(context: context, builder: (ctx) => AlertDialog(
+                                title: const Text("Encerrar Aula"),
+                                content: const Text("A aula será fechada e enviada para a aba 'Finalizadas'. Deseja concluir?"),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")),
+                                  TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("ENCERRAR", style: TextStyle(color: Colors.red))),
+                                ]
+                              )) ?? false;
+                              
+                              if (confirm) _salvarDados(isEncerrar: true);
+                            },
+                            icon: const Icon(Icons.check_circle, color: Colors.white, size: 18),
+                            label: const Text("ENCERRAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700], padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                          ),
+                        ),
+                      ],
+                    )
+                  ],
+                ),
+              )
+            ],
+          );
+        });
+  }
+}
+
+// ------------------------------------------
+// ABA FINALIZADAS (HISTÓRICO DA SALA)
+// ------------------------------------------
+class TabFinalizadas extends StatefulWidget {
+  final String salaId;
+  final String salaNome;
+  
+  const TabFinalizadas({super.key, required this.salaId, required this.salaNome});
+
+  @override
+  State<TabFinalizadas> createState() => _TabFinalizadasState();
+}
+
+class _TabFinalizadasState extends State<TabFinalizadas> {
+  String _searchQuery = "";
+
+  void _showClassDetails(Map<String, dynamic> data, String dataFmt) {
+    String professor = data['professor'] ?? "";
+    String tema = data['tema'] ?? "";
+    double oferta = (data['oferta'] ?? 0.0).toDouble();
+    int biblias = data['biblias'] ?? 0;
+    
+    List<dynamic> presentes = data['presentes'] ?? [];
+    List<dynamic> visitantes = data['visitantes'] ?? [];
+    int faltas = data['ausentes'] ?? 0;
+    int matriculados = data['total_matriculados'] ?? 0;
+    int totalNaSala = presentes.length + visitantes.length;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("Resumo - $dataFmt", style: const TextStyle(fontWeight: FontWeight.bold, color: ebdColor)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("👤 Professor: $professor"),
+              if (tema.isNotEmpty) Text("✨ Tema: $tema"),
+              const Divider(),
+              Text("📈 Matriculados Presentes: ${presentes.length} / $matriculados"),
+              Text("❌ Faltas: $faltas"),
+              Text("👋 Visitantes: ${visitantes.length}"),
+              const SizedBox(height: 5),
+              Text("👥 Total na sala: $totalNaSala", style: const TextStyle(fontWeight: FontWeight.bold)),
+              const Divider(),
+              Text("📕 Bíblias: $biblias"),
+              Text("💰 Oferta: R\$ ${oferta.toStringAsFixed(2)}"),
+            ],
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
+        actions: [
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                tooltip: "Gerar PDF da Aula",
+                onPressed: () => _gerarPdfAula(data, dataFmt),
+              ),
+              IconButton(
+                icon: const Icon(Icons.share, color: Colors.green),
+                tooltip: "Compartilhar WhatsApp",
+                onPressed: () {
+                  StringBuffer sb = StringBuffer();
+                  sb.writeln("📖 *Relatório EBD - ${widget.salaNome}*");
+                  sb.writeln("📅 Data: $dataFmt");
+                  sb.writeln("👤 Professor: $professor");
+                  if (tema.isNotEmpty) sb.writeln("✨ Tema: $tema");
+                  sb.writeln("");
+                  sb.writeln("👥 *Frequência:*");
+                  sb.writeln("Matriculados presentes: ${presentes.length} / $matriculados");
+                  sb.writeln("Faltas: $faltas");
+                  sb.writeln("Visitantes: ${visitantes.length}");
+                  sb.writeln("*Total de alunos na sala: $totalNaSala*");
+                  sb.writeln("");
+                  sb.writeln("📕 Bíblias: $biblias");
+                  sb.writeln("💰 Oferta: R\$ ${oferta.toStringAsFixed(2)}");
+                  
+                  Share.share(sb.toString().trim());
+                },
+              ),
+            ],
+          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Fechar")),
+        ],
+      )
+    );
+  }
+
+  Future<void> _gerarPdfAula(Map<String, dynamic> data, String dataFmt) async {
+    final pdf = pw.Document();
+    
+    String professor = data['professor'] ?? "";
+    String tema = data['tema'] ?? "";
+    double oferta = (data['oferta'] ?? 0.0).toDouble();
+    int biblias = data['biblias'] ?? 0;
+    List<dynamic> presentes = data['presentes'] ?? [];
+    List<dynamic> visitantes = data['visitantes'] ?? [];
+    int faltas = data['ausentes'] ?? 0;
+    int matriculados = data['total_matriculados'] ?? 0;
+
+    pdf.addPage(pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      build: (pw.Context context) {
+        return pw.Padding(
+          padding: const pw.EdgeInsets.all(24),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text("Igreja Evangélica Congregacional em Moreno", style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 20),
+              pw.Text("RELATÓRIO DE AULA E.B.D", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+              pw.Divider(),
+              pw.SizedBox(height: 10),
+              pw.Text("Turma: ${widget.salaNome}", style: pw.TextStyle(fontSize: 14)),
+              pw.Text("Data: $dataFmt", style: pw.TextStyle(fontSize: 14)),
+              pw.Text("Professor: $professor", style: pw.TextStyle(fontSize: 14)),
+              if (tema.isNotEmpty) pw.Text("Tema: $tema", style: pw.TextStyle(fontSize: 14)),
+              pw.SizedBox(height: 20),
+              pw.Text("FREQUÊNCIA", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.Text("Matriculados presentes: ${presentes.length} de $matriculados"),
+              pw.Text("Faltas: $faltas"),
+              pw.Text("Visitantes: ${visitantes.length}"),
+              pw.Text("Total de alunos na sala: ${presentes.length + visitantes.length}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 20),
+              pw.Text("OUTROS", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.Text("Bíblias: $biblias"),
+              pw.Text("Oferta Arrecadada: R\$ ${oferta.toStringAsFixed(2)}"),
+            ]
+          )
+        );
+      }
+    ));
+
+    await Printing.sharePdf(bytes: await pdf.save(), filename: 'Aula_${widget.salaNome}_$dataFmt.pdf');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // --- BARRA DE PESQUISA ---
+        Container(
+          color: ebdColor.withOpacity(0.1),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: TextField(
+            decoration: const InputDecoration(
+              hintText: "Pesquisar por data, prof ou tema...",
+              prefixIcon: Icon(Icons.search, color: ebdColor),
+              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: EdgeInsets.symmetric(vertical: 0),
+            ),
+            onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+          ),
+        ),
+
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('ebd_registros').where('sala_id', isEqualTo: widget.salaId).snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("Nenhuma aula finalizada."));
+
+              var allDocs = snapshot.data!.docs;
+
+              var docsFinalizados = allDocs.where((d) {
+                var data = d.data() as Map<String, dynamic>;
+                if (data['status'] != 'finalizada' && data['status'] != null) return false;
+
+                if (_searchQuery.isNotEmpty) {
+                  String prof = (data['professor'] ?? "").toString().toLowerCase();
+                  String tema = (data['tema'] ?? "").toString().toLowerCase();
+                  String dStr = data['data_str'] ?? "";
+                  String dataFmt = "";
+                  if (dStr.isNotEmpty) {
+                    DateTime dt = DateTime.parse(dStr);
+                    dataFmt = DateFormat('dd/MM/yyyy').format(dt);
+                  }
+                  if (!prof.contains(_searchQuery) && !dataFmt.contains(_searchQuery) && !tema.contains(_searchQuery)) {
+                    return false;
+                  }
+                }
+                return true;
+              }).toList();
+
+              if (docsFinalizados.isEmpty) return Center(child: Text("Nenhuma aula encontrada.", style: TextStyle(color: Colors.grey[600])));
+
+              docsFinalizados.sort((a, b) {
+                 Timestamp tA = (a.data() as Map<String, dynamic>)['data'] ?? Timestamp.now();
+                 Timestamp tB = (b.data() as Map<String, dynamic>)['data'] ?? Timestamp.now();
+                 return tB.compareTo(tA);
+              });
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: docsFinalizados.length,
+                itemBuilder: (ctx, i) {
+                  var data = docsFinalizados[i].data() as Map<String, dynamic>;
+                  
+                  String dataFmt = "";
+                  if (data['data_str'] != null && data['data_str'].toString().isNotEmpty) {
+                    DateTime d = DateTime.parse(data['data_str']);
+                    dataFmt = DateFormat('dd/MM/yyyy').format(d);
+                  }
+                  
+                  String professor = data['professor'] ?? "";
+                  String tema = data['tema'] ?? "";
+                  int presencas = (data['presentes'] as List?)?.length ?? 0;
+                  int visitantes = (data['visitantes'] as List?)?.length ?? 0;
+                  int faltas = data['ausentes'] ?? 0;
+                  double oferta = (data['oferta'] ?? 0.0).toDouble();
+
+                  return Card(
+                    elevation: 2,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => _showClassDetails(data, dataFmt),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.calendar_today, size: 16, color: ebdColor),
+                                    const SizedBox(width: 6),
+                                    Text(dataFmt, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  ],
+                                ),
+                                const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey)
+                              ],
+                            ),
+                            const Divider(),
+                            if (tema.isNotEmpty) ...[
+                              Text("Tema: $tema", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 15)),
+                              const SizedBox(height: 4),
+                            ],
+                            Text("Professor: $professor", style: TextStyle(color: Colors.grey[800], fontSize: 14)),
+                            const SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _buildBadge(Icons.people, "${presencas + visitantes} Alunos", Colors.green),
+                                _buildBadge(Icons.cancel, "$faltas Faltas", Colors.red),
+                                _buildBadge(Icons.attach_money, "R\$ ${oferta.toStringAsFixed(2)}", Colors.orange[800]!),
+                              ],
+                            )
+                          ],
+                        ),
+                      ),
+                    )
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBadge(IconData icon, String text, Color color) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(text, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)),
+      ],
+    );
   }
 }
 
@@ -792,431 +1642,6 @@ class _EbdAlunosTabState extends State<EbdAlunosTab> {
             ),
           );
         });
-  }
-}
-
-// ==========================================
-// TELA DE CHAMADA E OFERTA (DENTRO DA SALA)
-// ==========================================
-class EbdChamadaScreen extends StatefulWidget {
-  final String salaId;
-  final String salaNome;
-
-  const EbdChamadaScreen(
-      {super.key, required this.salaId, required this.salaNome});
-
-  @override
-  State<EbdChamadaScreen> createState() => _EbdChamadaScreenState();
-}
-
-class _EbdChamadaScreenState extends State<EbdChamadaScreen> {
-  bool _aulaIniciada = false;
-  final TextEditingController _professorController = TextEditingController();
-  final TextEditingController _ofertaController = TextEditingController();
-  Map<String, bool> _presencas = {};
-  bool _isSaving = false;
-
-  void _iniciarAula() {
-    if (_professorController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Digite o nome do professor!")));
-      return;
-    }
-    setState(() => _aulaIniciada = true);
-  }
-
-  void _addAlunoDialog() {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Novo Aluno"),
-        content: TextField(
-            controller: controller,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-                labelText: "Nome Completo", border: OutlineInputBorder())),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancelar")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: ebdColor, foregroundColor: Colors.white),
-            onPressed: () async {
-              if (controller.text.trim().isEmpty) return;
-              await FirebaseFirestore.instance
-                  .collection('ebd_salas')
-                  .doc(widget.salaId)
-                  .update({
-                'alunos': FieldValue.arrayUnion([controller.text.trim()])
-              });
-              if (mounted) Navigator.pop(context);
-            },
-            child: const Text("Adicionar"),
-          )
-        ],
-      ),
-    );
-  }
-
-  void _editAlunoDialog(String nomeAntigo) {
-    final controller = TextEditingController(text: nomeAntigo);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Editar Aluno"),
-        content: TextField(
-            controller: controller,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-                labelText: "Nome Completo", border: OutlineInputBorder())),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancelar")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue, foregroundColor: Colors.white),
-            onPressed: () async {
-              if (controller.text.trim().isEmpty ||
-                  controller.text.trim() == nomeAntigo) return;
-              await FirebaseFirestore.instance
-                  .collection('ebd_salas')
-                  .doc(widget.salaId)
-                  .update({
-                'alunos': FieldValue.arrayRemove([nomeAntigo])
-              });
-              await FirebaseFirestore.instance
-                  .collection('ebd_salas')
-                  .doc(widget.salaId)
-                  .update({
-                'alunos': FieldValue.arrayUnion([controller.text.trim()])
-              });
-              if (mounted) Navigator.pop(context);
-            },
-            child: const Text("Salvar"),
-          )
-        ],
-      ),
-    );
-  }
-
-  void _removerAluno(String nomeAluno) async {
-    bool confirm = await showDialog(
-            context: context,
-            builder: (ctx) => AlertDialog(
-                    title: const Text("Remover Aluno"),
-                    content: Text("Deseja remover $nomeAluno desta classe?"),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text("Cancelar")),
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text("REMOVER",
-                              style: TextStyle(color: Colors.red)))
-                    ])) ??
-        false;
-    if (confirm)
-      await FirebaseFirestore.instance
-          .collection('ebd_salas')
-          .doc(widget.salaId)
-          .update({
-        'alunos': FieldValue.arrayRemove([nomeAluno])
-      });
-  }
-
-  Future<void> _salvarDados(List<String> listaTotal,
-      {required bool isEncerrar}) async {
-    setState(() => _isSaving = true);
-    try {
-      List<String> presentes = [];
-      for (String aluno in listaTotal) {
-        if (_presencas[aluno] == true) presentes.add(aluno);
-      }
-
-      String valorString = _ofertaController.text.replaceAll(',', '.');
-      double oferta = double.tryParse(valorString) ?? 0.0;
-
-      String dataHoje = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      String registroId = "${dataHoje}_${widget.salaId}";
-
-      await FirebaseFirestore.instance
-          .collection('ebd_registros')
-          .doc(registroId)
-          .set({
-        'sala_id': widget.salaId,
-        'sala_nome': widget.salaNome,
-        'professor': _professorController.text.trim(),
-        'data': FieldValue.serverTimestamp(),
-        'data_str': dataHoje,
-        'presentes': presentes,
-        'ausentes': listaTotal.length - presentes.length,
-        'total_matriculados': listaTotal.length,
-        'oferta': oferta,
-        'registrado_por': FirebaseAuth.instance.currentUser?.uid,
-      }, SetOptions(merge: true));
-
-      if (mounted) {
-        if (isEncerrar) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text("Aula Encerrada!"), backgroundColor: Colors.green));
-          Navigator.pop(context);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text("Progresso salvo com sucesso!"),
-              backgroundColor: Colors.blue));
-        }
-      }
-    } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text("Erro ao salvar: $e"), backgroundColor: Colors.red));
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: Text("Sala: ${widget.salaNome}",
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16)),
-        backgroundColor: ebdColor,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: _aulaIniciada
-            ? [
-                IconButton(
-                    icon: const Icon(Icons.person_add),
-                    tooltip: "Adicionar Aluno",
-                    onPressed: _addAlunoDialog)
-              ]
-            : null,
-      ),
-      body: StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('ebd_salas')
-              .doc(widget.salaId)
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting)
-              return const Center(child: CircularProgressIndicator());
-            if (!snapshot.hasData || !snapshot.data!.exists)
-              return const Center(child: Text("Sala não encontrada."));
-
-            final data = snapshot.data!.data() as Map<String, dynamic>;
-            List<String> alunos = List<String>.from(data['alunos'] ?? []);
-            alunos.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-
-            if (!_aulaIniciada) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Card(
-                    elevation: 4,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.school, size: 60, color: ebdColor),
-                          const SizedBox(height: 10),
-                          Text("Iniciar Aula E.B.D",
-                              style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey[800])),
-                          const SizedBox(height: 5),
-                          Text(DateFormat('dd/MM/yyyy').format(DateTime.now()),
-                              style: const TextStyle(
-                                  fontSize: 16, color: Colors.grey)),
-                          const SizedBox(height: 20),
-                          TextField(
-                            controller: _professorController,
-                            textCapitalization: TextCapitalization.words,
-                            decoration: const InputDecoration(
-                                labelText: "Nome do Professor(a)",
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.person)),
-                          ),
-                          const SizedBox(height: 20),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 50,
-                            child: ElevatedButton(
-                              onPressed: _iniciarAula,
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10))),
-                              child: const Text("INICIAR TURMA",
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16)),
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }
-
-            return Column(
-              children: [
-                Container(
-                  color: ebdColor.withOpacity(0.1),
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text("Prof: ${_professorController.text}",
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, color: ebdColor)),
-                      Text("Matriculados: ${alunos.length}",
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, color: ebdColor)),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: alunos.isEmpty
-                      ? Center(
-                          child: Text("Nenhum aluno.\nClique no + lá em cima.",
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey[600])))
-                      : ListView.builder(
-                          itemCount: alunos.length,
-                          itemBuilder: (context, index) {
-                            String aluno = alunos[index];
-                            _presencas.putIfAbsent(aluno, () => false);
-
-                            return Container(
-                              decoration: BoxDecoration(
-                                  border: Border(
-                                      bottom: BorderSide(
-                                          color: Colors.grey.shade300))),
-                              child: CheckboxListTile(
-                                title: Text(aluno,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w500)),
-                                value: _presencas[aluno],
-                                activeColor: Colors.green,
-                                checkColor: Colors.white,
-                                secondary: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                        icon: const Icon(Icons.edit,
-                                            color: Colors.blue, size: 20),
-                                        onPressed: () =>
-                                            _editAlunoDialog(aluno)),
-                                    IconButton(
-                                        icon: const Icon(Icons.delete_outline,
-                                            color: Colors.red, size: 20),
-                                        onPressed: () => _removerAluno(aluno)),
-                                  ],
-                                ),
-                                onChanged: (bool? value) {
-                                  setState(() {
-                                    _presencas[aluno] = value ?? false;
-                                  });
-                                },
-                              ),
-                            );
-                          },
-                        ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(color: Colors.white, boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, -5))
-                  ]),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _ofertaController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        decoration: InputDecoration(
-                          labelText: "Valor Arrecadado (Oferta)",
-                          prefixIcon: const Icon(Icons.attach_money,
-                              color: Colors.green),
-                          hintText: "0.00",
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                          filled: true,
-                          fillColor: Colors.green[50],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _isSaving
-                                  ? null
-                                  : () =>
-                                      _salvarDados(alunos, isEncerrar: false),
-                              icon: const Icon(Icons.save,
-                                  color: Colors.white, size: 18),
-                              label: const Text("SALVAR",
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14)),
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: ebdColor,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10))),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _isSaving
-                                  ? null
-                                  : () =>
-                                      _salvarDados(alunos, isEncerrar: true),
-                              icon: const Icon(Icons.check_circle,
-                                  color: Colors.white, size: 18),
-                              label: const Text("ENCERRAR",
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14)),
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red[700],
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10))),
-                            ),
-                          ),
-                        ],
-                      )
-                    ],
-                  ),
-                )
-              ],
-            );
-          }),
-    );
   }
 }
 
